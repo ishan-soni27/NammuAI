@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  /** e.g. "https://kestrel-bay-api.onrender.com/api/v1" (must include /api/v1). */
+  /** Optional override; default is the same site's /api/v1. Must include /api/v1. */
   readonly VITE_API_BASE_URL?: string;
 }
 

@@ -1,7 +1,7 @@
 /**
  * The one place the frontend talks to the API.
  *
- * - Base URL comes from VITE_API_BASE_URL (set on Vercel). Default is the local API.
+ * - Base URL is the same site's /api/v1 (override with VITE_API_BASE_URL if ever needed).
  * - Every request sends X-Actor (for the audit trail) and X-Request-ID (so a browser
  *   error and the matching server log line share one reference id).
  * - Failures become an `ApiError` with a plain-English message and that reference id,
@@ -13,11 +13,14 @@
 import { getActor } from "../lib/actor";
 import type { ApiErrorBody } from "./types";
 
-const LOCAL_API = "http://localhost:8000/api/v1";
+// The API lives on the same site under /api (one Vercel project, two services; see the
+// root vercel.json and ADR-002). Locally, the Vite dev server forwards /api to the FastAPI
+// server on port 8000 (vite.config.ts), so the same relative path works everywhere and no
+// CORS is involved. VITE_API_BASE_URL is only an optional override, e.g. to point a local
+// frontend at the live API. `||` (not `??`) so a blank value also falls back.
+const SAME_SITE_API = "/api/v1";
 
-// `||`, not `??`: a variable saved with a blank value (easy to do in Vercel's settings) must
-// also fall back. Otherwise every call goes to the website itself and returns its HTML page.
-export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL?.trim() || LOCAL_API).replace(
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL?.trim() || SAME_SITE_API).replace(
   /\/+$/,
   "",
 );
@@ -81,9 +84,9 @@ export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> 
     );
   }
   if (body === null) {
-    // A 2xx that isn't JSON almost always means we called the website instead of the API
-    // (wrong or missing VITE_API_BASE_URL). Fail loudly instead of rendering a blank page.
-    console.error(`Expected JSON from ${API_BASE_URL}${path}; check VITE_API_BASE_URL.`);
+    // A 2xx that isn't JSON almost always means the request reached the website instead of
+    // the API (routing or VITE_API_BASE_URL problem). Fail loudly instead of a blank page.
+    console.error(`Expected JSON from ${API_BASE_URL}${path}; is the API service routed at /api?`);
     throw new ApiError(
       "The server sent back something we couldn't read.",
       "unexpected_response",

@@ -8,7 +8,7 @@ frozen seafood distributor) that answers two questions on Monday morning: **what
 arrive, and what is she stuck with** (stock inside the six-month line, or long stock at Harbor). It counts only sellable
 stock and real demand, every number drills down to its source rows, and Dana can tell it what it doesn't know (lead
 times, PO dates, "I've handled this"). Stack: FastAPI + SQLAlchemy + Alembic (Python 3.12) → Supabase Postgres;
-React + Vite + TypeScript (strict). Both the website and the API run on Vercel (two projects, one repo). Ishan decides;
+React + Vite + TypeScript (strict). The website and the API run in one Vercel project (two services). Ishan decides;
 Claude implements, explains and flags.
 
 ## After every prompt from Ishan
@@ -68,24 +68,25 @@ ruff check . && ruff format --check .
 
 # Frontend (Node >= 22.12)
 cd frontend && npm install
-cp .env.example .env.local          # VITE_API_BASE_URL=http://localhost:8000/api/v1
-npm run dev                         # http://localhost:5173
+npm run dev                         # http://localhost:5173 (proxies /api to the API on :8000)
 npm run build && npm run lint && npm run format:check
 
 # Raw data integrity (any time)
 shasum -a 256 -c data/raw_checksums.sha256
 ```
 
-## Deploy (Vercel, two projects from this repo; ADR-002)
-- **API project**, Root Directory `backend`, framework FastAPI (auto-detected: Vercel finds `app/main.py` → `app`).
-  Env: `DATABASE_URL` = Supabase **transaction pooler** (port 6543), `CORS_ORIGINS=https://nammu-ai.vercel.app,http://localhost:5173`,
-  `APP_ENV=production`. `backend/vercel.json`: region iad1 (next to Supabase us-east-1) and a daily cron on /api/v1/health
-  so Supabase never pauses.
-- **Web project** (https://nammu-ai.vercel.app), Root Directory `frontend`, env `VITE_API_BASE_URL=<api url>/api/v1`
-  (built into the bundle, so redeploy after changing it). `frontend/vercel.json` rewrites deep links to index.html.
-- Migrations run from a laptop (`alembic upgrade head`, session pooler), never on deploy.
-- **Never add a `backend/pyproject.toml` without a `[project]` table.** Vercel would treat it as the dependency list and
-  ignore requirements.txt. Tool config lives in `pytest.ini` / `ruff.toml` (guarded by tests/unit/test_deploy_config.py).
+## Deploy (ONE Vercel project, two services; ADR-002)
+- The repo-root `vercel.json` declares Vercel **Services** (beta): `web` = `frontend/` (Vite) and `api` = `backend/`
+  (FastAPI, entrypoint `app.main:app`). `/api/*` goes to the API **with the path intact**; everything else goes to the
+  website, which falls back to index.html for deep links. Same domain (https://nammu-ai.vercel.app), so no CORS and
+  no API-URL variable.
+- Project settings: Root Directory = repo root (empty). Env vars: `DATABASE_URL` = Supabase **transaction pooler**
+  (port 6543), `APP_ENV=production`. Vite only exposes `VITE_*` vars to the browser, so the DB URL never reaches the bundle.
+- `vercel.json` also pins region iad1 (next to Supabase us-east-1) and a daily cron on /api/v1/health so Supabase never pauses.
+- Locally, `npm run dev` proxies `/api` to uvicorn on :8000 (vite.config.ts): same relative URLs as production.
+- Migrations run from a laptop (`alembic upgrade head`, session pooler 5432), never on deploy.
+- **Never add a `backend/pyproject.toml` without a `[project]` table** (Vercel would ignore requirements.txt), and keep a
+  single `vercel.json` at the root. Both are guarded by tests/unit/test_deploy_config.py.
 
 ## Live-change playbook (BUILD_PROMPT §17)
 | Likely request | Where to change |
@@ -105,4 +106,5 @@ Each row should be a small, tested change. If one isn't, refactor it in Phase 6.
 - Frontend is **TypeScript** (strict).
 - Client files are **copied** (originals in `kestrel-bay/`, committed). Copies have distinct names (`bluetide_*.csv`, `ASSIGNMENT.md`, `KICKOFF_TRANSCRIPT.md`).
 - A PO whose re-derived ETA is **on or before** AS_OF counts as late (`<=`, not `<`), so PO-260407 gets ETA Nov 23 (A18).
-- The **API runs on Vercel**, not Render (2026-11-25, ADR-002). BUILD_PROMPT §8.1/§15 still say Render; this overrides it.
+- **One Vercel project hosts both the website and the API** (Vercel Services), not Render + Vercel (2026-11-25, ADR-002).
+  BUILD_PROMPT §8.1/§15 still say Render; this overrides it.

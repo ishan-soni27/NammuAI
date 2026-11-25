@@ -1,6 +1,7 @@
 /**
  * Page routes. Every route shares the header. Deep links (e.g. /items/SHR-1620 in
- * Phase 5) work on Vercel because vercel.json rewrites every path to index.html.
+ * Phase 5) work on Vercel because the web service in the root vercel.json rewrites
+ * every non-file path to index.html.
  */
 import { Route, Routes } from "react-router";
 import { AppHeader } from "./components/AppHeader";

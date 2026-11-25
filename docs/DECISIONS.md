@@ -19,51 +19,60 @@ Tailwind CSS 4 (tokens live in CSS `@theme`, so there is no JS config), TanStack
 Tests use **httpx2**, because Starlette 1.x's TestClient deprecates plain httpx.
 Context / Alternatives / Tradeoffs / Revisit when: _to be written (BUILD_PROMPT §8.1)._
 
-## ADR-002 Hosting: Vercel for the website AND the API, Supabase for the database
-**Date:** 2026-11-25 · **Decided by:** Ishan. This replaces the original plan (Render for the API), which Claude had proposed
-in the planning chat.
+## ADR-002 Hosting: one Vercel project (website + API as two services), Supabase for the database
+**Date:** 2026-11-25 · **Decided by:** Ishan, in two steps. "Use Vercel, not Render" came first. Then "keep it simple,
+why two projects?" led to a single project. This replaces the original plan (Render for the API), which Claude had
+proposed in the planning chat.
 
-**Context.** BUILD_PROMPT §8.1 put the Python API on Render's free tier (a normal long-running server) and the website
-on Vercel. Ishan already uses Vercel and has never used Render. Render's free tier also sleeps after 15 idle minutes
-and takes 30–60 s to wake, which needs a third service (an uptime pinger) to hide before the demo.
+**Context.** BUILD_PROMPT §8.1 put the Python API on Render (an always-on server) and the website on Vercel. Ishan had
+never used Render. Its free tier sleeps after 15 idle minutes, takes 30–60 s to wake, and needs an uptime pinger.
+Claude's next proposal, two Vercel projects (one per folder), worked, but meant two projects, two URLs, CORS and an
+API-URL variable. Ishan asked for something simpler.
 
-**Decision.** Two Vercel projects from one repo. `frontend/` is the static React site, and `backend/` is the FastAPI app,
-which Vercel runs as one serverless function handling every route. Supabase stays the database. The browser never talks
-to Supabase directly: all reads and writes go through the API, which validates, audits and runs the planning engine
-(RLS with no policies blocks Supabase's public Data API, ADR-015).
+**Decision.** One Vercel project, configured by the repo-root `vercel.json` using Vercel **Services** (beta, all plans):
+- `web` = `frontend/` (static Vite build; non-file paths fall back to index.html for deep links);
+- `api` = `backend/` (FastAPI, entrypoint `app.main:app`, one serverless function for every route);
+- top-level rewrites: `/api/(.*)` → `api`, then everything else → `web`. Vercel uses the first match and never falls
+  back. **The API receives the original path** (`/api/v1/health`), which is why the routes are mounted at `/api/v1`.
+
+The website and the API share one domain (https://nammu-ai.vercel.app), so there is no CORS and no API-URL variable.
+The browser never talks to Supabase directly. All reads and writes go through the API, which validates, audits and runs
+the planning engine. RLS with no policies blocks Supabase's public Data API (ADR-015).
 
 **How it is wired**
-- The API's `DATABASE_URL` uses Supabase's *transaction pooler* (port 6543), which multiplexes many short-lived
-  serverless connections. Prepared statements are off, so this works. Locally and for migrations we use the session
-  pooler (5432).
-- On Vercel (`VERCEL=1`) each instance keeps at most 1 + 2 connections (`db/session.py`).
-- `backend/vercel.json`: functions run in `iad1` (Washington, D.C., next to Supabase us-east-1), and a daily cron calls
-  `/api/v1/health`. That touches the DB, so Supabase's free tier never pauses after a week idle. No external pinger is needed.
-- Traps found by reading Vercel's Python builder source, each guarded by `tests/unit/test_deploy_config.py`:
-  - any `backend/pyproject.toml` becomes the dependency list and `requirements.txt` is ignored, so tool config moved
-    to `pytest.ini` / `ruff.toml`;
+- `DATABASE_URL` on Vercel uses Supabase's *transaction pooler* (port 6543), which multiplexes short-lived serverless
+  connections. Prepared statements are off, so this works. Locally and for migrations we use the session pooler (5432).
+- On Vercel (`VERCEL=1`) each instance keeps at most 1 + 2 DB connections (`db/session.py`).
+- `vercel.json` pins functions to `iad1` (Washington, D.C., next to Supabase us-east-1) and runs a daily cron on
+  `/api/v1/health`. That touches the DB, so Supabase's free tier never pauses.
+- Local dev mirrors production: `npm run dev` proxies `/api` to uvicorn on :8000, so the frontend uses the same relative URLs.
+- Traps found in Vercel's builder source and docs, each guarded by `tests/unit/test_deploy_config.py`:
+  - any `backend/pyproject.toml` replaces requirements.txt as the dependency list, so tool config lives in `pytest.ini` / `ruff.toml`;
   - `.python-version` must be `3.12`, not a patch pin;
-  - the entrypoint is auto-detected as `app/main.py` → `app`, so no root-level `main.py`/`app.py` may shadow it.
-- Migrations run from a laptop, never on deploy.
+  - nested `vercel.json` files are dropped in favour of one root file;
+  - the `/api` rewrite must come before the catch-all.
 
 **Alternatives.**
-- (a) Render for the API (the original plan): a textbook always-on server, easy background jobs. Rejected by Ishan:
-  a new tool, cold starts, and a keep-warm service.
-- (b) GitHub Pages for the website: no rewrites (deep links need a 404.html hack), a /NammuAI/ base path, and about
-  10 minutes of CDN staleness after a deploy. Rejected.
-- (c) Browser → Supabase directly: no backend. Rejected: the planning logic is Python, edits need validation plus an
-  audit row in one transaction, database keys would sit in the browser, and the assignment requires a backend.
+- (a) Render for the API (original plan): rejected. A new tool, cold starts and an uptime pinger.
+- (b) Two Vercel projects (`frontend/` and `backend/` as separate projects): works with zero beta features, and is
+  the fallback if Services ever misbehaves. Rejected for v1 as more moving parts (two URLs, CORS, an API-URL variable).
+- (c) GitHub Pages for the website: rejected. No rewrites, a base path, and CDN staleness after deploys.
+- (d) Browser → Supabase directly with no backend: rejected. The planning logic is Python, edits need validation plus
+  an audit row in one transaction, database keys would sit in the browser, and the assignment requires a backend.
 
 **Tradeoffs.**
-- Serverless rules apply. No in-memory state between requests (the engine computes on request anyway, ADR-004).
-- FastAPI BackgroundTasks aren't guaranteed to finish after the response, so Phase 4 writes `request_log` rows inline.
-- Vercel's Hobby plan keeps raw runtime logs only briefly. The durable logs are our own tables (`request_log`,
-  `event_log`, `audit_log`, `data_issues`), which the Activity page shows.
-- Cron runs at most once a day on Hobby (enough for Supabase).
-- CORS is still needed because the site and the API are on different `*.vercel.app` domains.
+- Vercel Services is **beta**. The fallback (b) needs only a second project plus the old `frontend/vercel.json`
+  rewrite and CORS origin, and no code changes.
+- Serverless rules apply: no in-memory state between requests (the engine computes on request anyway, ADR-004).
+  FastAPI BackgroundTasks aren't guaranteed to finish, so Phase 4 writes `request_log` rows inline.
+- Vercel's free tier keeps raw runtime logs only briefly. The durable logs are our own tables (`request_log`,
+  `event_log`, `audit_log`, `data_issues`).
+- Vercel's docs don't say whether `crons`/`regions` apply with Services; verify in the dashboard after the first deploy.
 
-**Revisit when.** Background or long-running jobs are needed (e.g. a nightly BlueTide feed larger than a function's time
-limit). Then add a worker host or Vercel Queues. Or Kestrel Bay outgrows the free tiers: Vercel Pro and Supabase Pro need no code changes.
+**Revisit when.**
+- Services leaves beta, or causes trouble: switch to (b).
+- Long-running jobs appear (e.g. a nightly BlueTide feed): add Vercel Queues or a worker host.
+- Kestrel Bay outgrows the free tiers: Vercel Pro and Supabase Pro need no code changes.
 
 ## ADR-003 Raw JSONB layer + clean tables + data_issues
 **Decision:** Every CSV row is stored verbatim in `raw_rows` (JSONB), clean tables point back via `raw_row_id`, and

@@ -199,3 +199,34 @@ session pooler for migrations, the iad1 region, the daily cron as Supabase keep-
 - On "why Render": the build prompt's choice was passed along without checking it against Ishan's experience until he asked.
 **Follow-ups:** Ishan creates the Vercel API project (root `backend`) with DATABASE_URL (port 6543), CORS_ORIGINS and
 APP_ENV, then sets VITE_API_BASE_URL on the web project and redeploys. Claude smoke-tests both live URLs.
+
+## #9 | 2026-11-25 13:27 UTC | "Why two projects? Keep it simple" → one Vercel project with two services
+**Prompt (simplified):** Is this the most efficient way? Ishan has never needed two separate projects for a backend; keep it simple.
+**What changed:** Root `vercel.json` added. It declares Vercel Services: `web` = frontend/, `api` = backend/
+(`app.main:app`), rewrites `/api/(.*)` → api and the rest → web, region iad1, daily cron.
+`backend/vercel.json` and `frontend/vercel.json` deleted. Frontend changes:
+- `client.ts` defaults to the same-site `/api/v1`; VITE_API_BASE_URL is now an optional override;
+- `vite.config.ts` dev proxy `/api` → :8000;
+- `.env.example` and comments updated.
+
+`tests/unit/test_deploy_config.py` was rewritten for the single-project layout (69 tests now). CLAUDE.md deploy
+section and ADR-002 were rewritten.
+**Impact:** One project, one URL. The API will live at https://nammu-ai.vercel.app/api/v1, so there's no CORS, no
+API-URL variable and no second project. Verified locally: the browser address :5173/api/v1/health went through the Vite
+proxy to FastAPI, then to Supabase, and returned `status: ok`. The deep link /items/SHR-1620 served the app. Until Ishan
+changes the existing project's Root Directory to the repo root, the live site is temporarily without the API and without
+deep-link fallback.
+**Decisions made (and by whom):** Ishan: one project. Claude: Vercel Services via an explicit root config rather than
+layout auto-detection, which the builder source shows is feature-flagged. Two projects stays the documented fallback.
+**AI mistakes caught or corrected:**
+- **The two-project setup in #8 was more complex than needed.** Claude didn't check for Vercel's single-project Services
+  feature before recommending it. Found only after Ishan pushed back.
+- Claude's script for the local end-to-end check first used a wrong relative path to uvicorn. Fixed on rerun.
+
+What the verification found, from Vercel's source and docs rather than memory:
+- Services is beta on all plans.
+- The FastAPI service receives the unstripped path (prefix stripping only applies to the legacy experimentalServices).
+- Layout auto-detection is behind a flag, hence the explicit config.
+**Follow-ups:** Ishan: in the nammu-ai project set Root Directory to the repo root (empty), the Framework Preset to
+"Other" if Vercel asks, add DATABASE_URL (6543) and APP_ENV, then redeploy. Claude: smoke-test the live site + API, and
+confirm the cron and region took effect.
