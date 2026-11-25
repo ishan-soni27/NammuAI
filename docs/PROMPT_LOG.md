@@ -230,3 +230,14 @@ What the verification found, from Vercel's source and docs rather than memory:
 **Follow-ups:** Ishan: in the nammu-ai project set Root Directory to the repo root (empty), the Framework Preset to
 "Other" if Vercel asks, add DATABASE_URL (6543) and APP_ENV, then redeploy. Claude: smoke-test the live site + API, and
 confirm the cron and region took effect.
+
+## #10 | 2026-11-25 13:32 UTC | Where do DATABASE_URL and APP_ENV go?
+**Prompt (simplified):** Where exactly do we add DATABASE_URL and APP_ENV?
+**What changed:** Nothing in the repo. Claude copied the production DATABASE_URL (the backend/.env value with port 5432
+switched to 6543, the transaction pooler) to Ishan's clipboard with `pbcopy`, so it never appeared in chat and the
+port didn't have to be edited by hand.
+**Impact:** Ishan can paste the value into Vercel → nammu-ai → Settings → Environment Variables.
+**Decisions made (and by whom):** Claude: apply both variables to all environments (Production + Preview) and mark
+DATABASE_URL as Sensitive.
+**AI mistakes caught or corrected:** None. In hindsight, #9's instructions named the setting without saying where it lives in the dashboard.
+**Follow-ups:** Ishan sets the Root Directory to the repo root, adds the two variables and redeploys. Claude smoke-tests.
