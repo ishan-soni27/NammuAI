@@ -1,0 +1,77 @@
+/*
+ * Global styles and design tokens (BUILD_PROMPT §9.1). Grounded in the subject: cold
+ * storage, New Bedford harbor, maritime signal flags.
+ *
+ * Tailwind v4 turns each --color-* token into utilities, e.g. `bg-ice`, `text-ink`,
+ * `border-rope`, `text-late`, `bg-late-tint`. Status colours are always paired with an
+ * icon and words, never colour alone (accessibility, §9.1).
+ *
+ * How to change this: edit a token here and every component using it updates.
+ */
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Atkinson Hyperlegible Next", "Atkinson Hyperlegible", system-ui, sans-serif;
+
+  /* Surfaces and text */
+  --color-ice: #f2f5f6; /* page background: cool cold-storage grey, deliberately not cream */
+  --color-hull: #ffffff; /* cards and surfaces */
+  --color-ink: #13293d; /* primary text: harbor ink */
+  --color-fog: #5e6e7a; /* secondary text */
+  --color-rope: #d6dee3; /* rules and borders */
+
+  /* Order statuses: text on tint */
+  --color-late: #b3261e;
+  --color-late-tint: #fbe9e7;
+  --color-week: #8a5a00;
+  --color-week-tint: #fff1cc;
+  --color-soon: #1f5f99;
+  --color-soon-tint: #e6f0fa;
+  --color-fine: #2e6b4e;
+  --color-fine-tint: #e7f3ec;
+  --color-handled: #55626c;
+  --color-handled-tint: #edf0f2;
+
+  /* Stuck tags: text on tint */
+  --color-expired: #7f1d1d;
+  --color-expired-tint: #f9e3e3;
+  --color-stopped: #4a5560;
+  --color-stopped-tint: #eceff1;
+  --color-sixmonth: #9a3412;
+  --color-sixmonth-tint: #fdebdd;
+  --color-harbor: #1e4e7a;
+  --color-harbor-tint: #e3edf6;
+  --color-overstock: #6b5b1e;
+  --color-overstock-tint: #f4efd9;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-ice);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Quantities line up in columns (tabular numerals) everywhere. */
+  body {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Visible keyboard focus (§9.1). */
+  :focus-visible {
+    outline: 3px solid var(--color-soon);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+/* No decorative motion; respect the OS setting for the little we have (§9.1). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
