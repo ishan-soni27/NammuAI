@@ -277,3 +277,55 @@ so this closes that gap. The business date shows from the API, the status senten
 **Decisions made (and by whom):** None.
 **AI mistakes caught or corrected:** None.
 **Follow-ups:** Cron Jobs check in the Vercel dashboard is still pending. Phase 2 (loader) is waiting for Ishan's "go".
+
+## #14 | 2026-11-25 13:55 UTC | "go": Phase 2, the loader
+**Prompt (simplified):** Go ahead with Phase 2 (the loader), as planned.
+**What changed (built in this turn, committed after #15):**
+- `backend/app/loader/`: `read_raw`, `reference`, `normalize`, `classify`, `convert`, `rules` (T01–T31, one
+  builder per file), `pipeline` (pure), `write`, `report`, `run` (CLI), `types`.
+- `backend/app/planning/supply.py` (on-hand breakdown per §6.1, `effective_lead_time_days`) and `calendar.py` (`add_months`).
+- Load labels moved into `business_rules.py` (ZZ-, FR-, FRESH, CM-, INTERNAL, ADJ-, status words) so no code is hard-coded.
+- Tests: 29 per-trap rule tests, parser/reference/planning tests, and 17 golden tests on the real files (151 total).
+**Impact:** The pipeline reproduces every golden fact it can. The first real load **failed** (see below) and the turn
+ended when the network dropped mid-way, so this entry was written in #15.
+**Decisions made (and by whom):** Claude chose Python's `csv` module over pandas for the loader (ADR-019, a deviation
+from BUILD_PROMPT §8.1, flagged at the Phase 2 stop).
+**AI mistakes caught or corrected:**
+- **Writer bug:** it dropped every field named `source`, which also wiped the seeds' provenance text. The DB's NOT NULL
+  on `excluded_orders.source` caught it on the first real load; the transaction rolled back (0 rows left, verified).
+- The 5 s connect timeout (right for the API) was too tight for a laptop, so recording that failure also timed out and
+  left load run #1 stuck at "running". Claude closed it by hand with the real reason, and added an event_log note.
+- Pack-size regex: `\b` never matches after `#` in "10#". Caught by smoke-testing before any test was written.
+- A test factory with blank pack text made the T09 test fail. That was a fixture bug, and the T09 check itself was right.
+- The invariant test caught `datetime.now()` in run.py. It's a legitimate report timestamp, now marked `# clock-ok`.
+**Follow-ups:** Finish the load.
+
+## #15 | 2026-11-25 14:45 UTC | "Try now, the network is back" → Phase 2 done
+**Prompt (simplified):** The network is back; try the load again.
+**What changed:**
+- `write.py`: bulk rows via Postgres COPY; `SET LOCAL statement_timeout = '15min'` for the load transaction only;
+  `finished_at` uses `clock_timestamp()`.
+- `session.py`/`env.py`/`run.py`: a configurable connect timeout (30 s from a laptop).
+- `scripts/profile_data.py` (independent re-derivation, stdlib only).
+- Docs:
+  - `DATA_LOAD_REPORT.md` (generated);
+  - DATA_AUDIT (two new findings: LB POs for LOB-T56, a 4th "FUEL SURCHARGE" price row; Phase 2 status);
+  - ASSUMPTIONS A19–A22 (conservative defaults for unknown status, vendor type, location, fully received open PO);
+  - DECISIONS ADR-019 (csv not pandas), ADR-020 (one transaction, COPY, raw rows per run);
+  - CLAUDE.md commands.
+**Impact:**
+- **Load run #4 succeeded in 1 m 46 s** (run #2 had succeeded in about 5.5 m before COPY).
+- 16,542 raw rows, 4,047 data issues, 0 errors.
+- The second load **kept all 5 vendor_settings untouched** (invariant #5 shown working).
+- Every golden fact was re-checked three ways: pytest goldens, profile_data.py, and SQL on Supabase.
+- Every clean row links to its raw row.
+- The live `/api/v1/health` now reports `last_load_at`.
+**Decisions made (and by whom):** Claude: COPY + per-transaction timeout (ADR-020); the four conservative defaults
+(A19–A22) are recorded as assumptions for Ishan to review.
+**AI mistakes caught or corrected:**
+- Run #3 hit Supabase's 2-minute statement timeout. Measuring the network (about 300 ms round trip, 140 KB/s upload)
+  showed it is bandwidth-bound, so COPY alone wasn't enough; hence the per-transaction timeout.
+- `now()` returns the transaction START time, so run #2's recorded duration (4 s) is wrong; it really took about 5.5 m.
+  Fixed with clock_timestamp() for future runs. Run #2's row is left as history rather than rewritten.
+**Follow-ups:** The Data notes page (Phase 4) must read issues from the latest successful run only. Pruning old raw
+rows is a later step. Phase 3 (planning engine) plan is waiting for "go".

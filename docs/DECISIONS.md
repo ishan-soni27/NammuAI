@@ -170,3 +170,55 @@ code, rejected by invariant #13.
 **Tradeoffs.** One more small file to maintain.
 
 **Revisit when.** BlueTide gains a vendor type field.
+
+## ADR-019 The loader reads CSVs with Python's `csv` module, not pandas
+**Date:** 2026-11-25 · **Decided by:** Claude, flagged to Ishan at the Phase 2 stop. BUILD_PROMPT §8.1 said "pandas is
+used only in the one-time loader", and the approved Phase 2 plan kept pandas out of the deployed API.
+
+**Context.** The raw layer must keep every value exactly as BlueTide wrote it: trailing spaces in codes, leading zeros in
+UPCs, blanks. BUILD_PROMPT §16 warns that pandas silently "fixes" these unless every option is set just right. The cleaning
+rules work row by row (T01–T31), so dataframes add little.
+
+**Decision.** Read with `csv.DictReader` (`newline=""` for CRLF, `utf-8-sig`). Every value is a string, untouched. The
+rules are plain functions over small dataclasses, and quantities use `Decimal`.
+
+**Alternatives.** pandas with `dtype=str, keep_default_na=False` would work, but it's a large dependency and a known
+source of subtle type coercion.
+
+**Tradeoffs.** Grouping and summing are written as plain loops (`collections.Counter`/`defaultdict`). The whole pipeline
+still runs in about 0.2 s on the full exports. No extra dependency, so the loader could later run inside the deployed API
+(e.g. a nightly feed) without shipping pandas.
+
+**Revisit when.** Data grows to millions of rows, or analysis-heavy features (forecasting experiments) need dataframes.
+
+## ADR-020 One load = one transaction, raw rows kept per run, bulk writes with COPY
+**Date:** 2026-11-25 · **Decided by:** Claude (implementation of BUILD_PROMPT §10 layer 2)
+
+**Context.** A reload must never leave the database half-updated, and it must never touch Dana's edits (invariant #5). The
+first real loads exposed two practical problems with a home connection to Supabase (about 300 ms per round trip, about
+140 KB/s upload). Inserting row by row took about 5.5 minutes, and Supabase's 2-minute statement timeout cancelled a long
+insert.
+
+**Decision.**
+- A `load_runs` row is created first (status running) and closed as succeeded or failed.
+- Everything else (raw rows, `TRUNCATE` of the clean tables listed explicitly with no CASCADE, clean rows, seeding
+  `vendor_settings` only where missing, `data_issues`, a row-count reconciliation) runs in **one transaction**.
+- Bulk rows go through Postgres `COPY`. `SET LOCAL statement_timeout = '15min'` applies to that transaction only.
+- Raw rows and issues are kept per load run, so history is auditable.
+
+**Results.**
+- A full load takes about 1 m 45 s from a laptop (it was about 5.5 m).
+- A second load kept all five of Dana's vendor settings untouched.
+- Both failed attempts rolled back completely (verified: 0 rows left).
+
+**Alternatives.** Upserts instead of a rebuild: more code, and stale rows could linger when BlueTide deletes something.
+One transaction per table: a crash could leave a mix of old and new data.
+
+**Tradeoffs.**
+- `raw_rows` and `data_issues` grow by about 16.5k and 4k rows per load, which is fine for the free tier at a handful of
+  loads. A prune option for old runs is a later step.
+- The Data notes page must read issues from the **latest successful** run only.
+- COPY needs the session pooler (5432), which the loader uses.
+
+**Revisit when.** Loads become nightly (prune old raw rows; run the loader near the database, e.g. a Vercel cron).
+

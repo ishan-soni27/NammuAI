@@ -48,6 +48,9 @@ the raw layer. Types are parsed only in the cleaning step.
 - **Rule:** convert every lot to the item's `sell_uom` using `lb_per_case` from `data/reference/pack_sizes.csv`.
   LB lot of a CS item: qty ÷ lb_per_case and cost × lb_per_case. Keep the source qty/uom/cost alongside. A missing factor
   excludes the lot and logs an `error`.
+- **Also found in Phase 2 (not in the original audit):** two LOB-T56 purchase orders were entered in LB
+  (PO-260258 900 lb, PO-260271 800 lb). Both were received long ago, so nothing is incoming. The same conversion rule
+  applies to any open PO line in pounds, and these two are flagged for information.
 - **Test:** `test_T10_lb_lots_converted_to_cases` (P2) · golden G05, G06.
 
 ### T11 Hold and damaged pseudo-locations
@@ -219,7 +222,8 @@ Classification order (§6.2): cancelled → transfer → credit → sample → o
 - **Rule (§6.6, amended by A18):** `candidate = max(BlueTide date, order_date + effective lead time)`. A date set by Dana wins.
   Otherwise, if `candidate <= AS_OF`, ETA = AS_OF + 7 days and it is flagged "late, confirm with vendor". Otherwise ETA = candidate.
   It is flagged "BlueTide date has passed" whenever BlueTide's date < AS_OF.
-- **Test:** `test_T26_po_eta_rederived` (P3) · golden G15.
+- **Test:** `test_T26_overdue_open_po_flagged` (P2: the loader flags BlueTide dates that have passed) and
+  `test_T26_po_eta_rederived` (P3: the engine re-derives the arrival date) · golden G15.
 
 ### T27 Vendor lead time problems
 - **Found:** BXE `56` (stale; Dana says 10–12 weeks). AFS blank (Dana: about 6 weeks). DLC `"2-3 wks"` (text). MNP 14 (matches
@@ -238,7 +242,9 @@ Classification order (§6.2): cancelled → transfer → credit → sample → o
 - **Test:** `test_T28_vendor_types_classified` (P2).
 
 ### T29 Price list quirks
-- **Found:** FUEL-SURCH rows (uom EA, three open-ended effective ranges) and a GROCERY tier.
+- **Found:** FUEL-SURCH rows (uom EA, three open-ended effective ranges) and a GROCERY tier. **Also found in
+  Phase 2:** a fourth surcharge row coded `FUEL SURCHARGE` (with a space, tier STD, $0.35 per LB, from 2026-03-01), a
+  different spelling and a per-pound rate. Flagged for Marco's phase 2.
 - **Rule:** out of scope (Marco, phase 2). Load into raw + a clean `prices` table and log only; no UI.
 - **Test:** `test_T29_price_list_loaded_not_used` (P2).
 
@@ -249,6 +255,11 @@ Classification order (§6.2): cancelled → transfer → credit → sample → o
 Computed from the raw files in the planning chat. **If the loader disagrees, the loader is probably wrong.** Investigate
 before changing a test. The "Re-checked" column records an independent recomputation on 2026-11-25 (Phase 0) with the
 Python stdlib `csv` module, before any app code existed.
+
+**Phase 2 status (2026-11-25):** G01–G14 and G16 are asserted by `backend/tests/golden/test_real_data.py` and all pass.
+`scripts/profile_data.py` re-derives the same facts with separate code (no app imports), and every one matches. The same
+numbers were recomputed in SQL against the loaded Supabase database (load run #4), and they match too. G15 and G17 need
+the planning engine (Phase 3).
 
 | ID | Fact | Re-checked 2026-11-25 |
 |---|---|---|

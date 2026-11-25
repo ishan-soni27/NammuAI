@@ -61,7 +61,8 @@ pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env                # paste the Supabase *session pooler* URL (port 5432) into DATABASE_URL
 python3 ../scripts/set_database_password.py   # puts the password in safely (hidden, URL-encoded)
 alembic upgrade head                # create/upgrade tables (RLS on every table)
-python -m app.loader.run            # one-time load (idempotent for the clean layer)  [Phase 2]
+python -m app.loader.run            # load BlueTide CSVs (~2 min from a laptop; safe to re-run; writes docs/DATA_LOAD_REPORT.md)
+python -m app.loader.run --dry-run  # run every rule + write the report, touch no database
 uvicorn app.main:app --reload       # http://localhost:8000/docs
 pytest                              # all tests (never touches the real DB; see tests/conftest.py; config in pytest.ini)
 ruff check . && ruff format --check .
@@ -71,8 +72,9 @@ cd frontend && npm install
 npm run dev                         # http://localhost:5173 (proxies /api to the API on :8000)
 npm run build && npm run lint && npm run format:check
 
-# Raw data integrity (any time)
+# Raw data integrity + independent re-check of the audit facts (any time, system python3 is fine)
 shasum -a 256 -c data/raw_checksums.sha256
+python3 scripts/profile_data.py
 ```
 
 ## Deploy (ONE Vercel project, two services; ADR-002)
@@ -84,7 +86,8 @@ shasum -a 256 -c data/raw_checksums.sha256
   (port 6543), `APP_ENV=production`. Vite only exposes `VITE_*` vars to the browser, so the DB URL never reaches the bundle.
 - `vercel.json` also pins region iad1 (next to Supabase us-east-1) and a daily cron on /api/v1/health so Supabase never pauses.
 - Locally, `npm run dev` proxies `/api` to uvicorn on :8000 (vite.config.ts): same relative URLs as production.
-- Migrations run from a laptop (`alembic upgrade head`, session pooler 5432), never on deploy.
+- Migrations and the loader run from a laptop through the **session pooler (5432)**, never on deploy. The loader
+  needs it for Postgres COPY, and does everything in one transaction (ADR-020).
 - **Never add a `backend/pyproject.toml` without a `[project]` table** (Vercel would ignore requirements.txt), and keep a
   single `vercel.json` at the root. Both are guarded by tests/unit/test_deploy_config.py.
 

@@ -28,6 +28,10 @@ Confirmed by Dana (date) · Decided by Ishan (date) · Assumption (not asked; ou
 | A16 | Harbor $ per month | Hidden until the pallet rate is known | Email P.S. | P1 item | Pending Dana |
 | A17 | Currency of lot cost | "$ at cost" uses each lot's `unit_cost` as exported, treated as USD. BlueTide has no currency on lots; MNP's vendor currency is CAD | Not asked | Planning stuck valuation | Assumption |
 | A18 | When a PO counts as late | A PO is late when its re-derived arrival date is **on or before** AS_OF (`<=`). BUILD_PROMPT §6.6 had strict `<`. PO-260407 (calamari, BlueTide Oct 19) re-derives to exactly Nov 16, so it is flagged late with ETA Nov 23, which matches what email Q3 told Dana | Email Q3 + Ishan | Planning supply (§6.6) | Decided by Ishan (2026-11-25) |
+| A19 | Unrecognized item status | A status value that isn't one of the known ones is treated as **active** and flagged, so an item is never silently dropped from planning | Not asked | `loader/classify.py` `status_kind` | Assumption (conservative) |
+| A20 | Vendor missing from vendor_types.csv | Treated as a **stock supplier** (its items still get planned) and flagged | Not asked | `loader/rules.py` `build_vendors` | Assumption (conservative) |
+| A21 | Lot at an unknown location | **Not counted** as sellable, and logged as an error (the lot is left out) until the location is added to `data/reference/locations.csv` | Not asked | `loader/rules.py`, `planning/supply.py` | Assumption (conservative) |
+| A22 | Open PO line received in full | Counts **nothing** as still coming, flagged for Dana | Not asked | `loader/rules.py` `_build_po_line` | Assumption |
 
 ## Notes for explaining these in the review
 - **Why conservative?** Every default above leans toward ordering a little early: the upper end of the lead-time range,
