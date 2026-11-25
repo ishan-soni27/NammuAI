@@ -266,3 +266,14 @@ Health takes about 1.0–1.3 s per call from here (TLS + DB round trips). It'll 
 **AI mistakes caught or corrected:** `>=22.12` in Phase 1 was an open-ended engines range. Caught by Vercel's warning.
 **Follow-ups:** Ishan: glance at the page ("Everything is connected"), and check Settings → Cron Jobs shows the daily
 /api/v1/health job. Next: Phase 2 (loader) plan, waiting for "go".
+
+## #13 | 2026-11-25 13:47 UTC | Visual check of the live page
+**Prompt (simplified):** Pasted what the live page shows: "Monday, November 16, 2026", "Everything is connected", server
+up, database connected, no BlueTide data loaded yet, version 3b6e32c at /api/v1.
+**What changed:** Nothing in the repo.
+**Impact:** Ishan confirmed the Phase 1 page renders correctly in a real browser. Claude could only check HTTP responses,
+so this closes that gap. The business date shows from the API, the status sentences are correct, and the relative
+/api/v1 base works.
+**Decisions made (and by whom):** None.
+**AI mistakes caught or corrected:** None.
+**Follow-ups:** Cron Jobs check in the Vercel dashboard is still pending. Phase 2 (loader) is waiting for Ishan's "go".
