@@ -1,0 +1,238 @@
+"""Every tunable business number, in one file (BUILD_PROMPT §6).
+
+Purpose
+    If Dana, Walt or a reviewer asks "where does 6 months / 2 weeks / 60 days come from?",
+    the answer is here. Each field records what it means, where the value came from
+    (a transcript timestamp, an email question, or an assumption ID from
+    docs/ASSUMPTIONS.md) and how to change it. That text is stored as field *metadata*
+    so `GET /api/v1/settings` can show it to Dana verbatim. The docs and the running app
+    therefore can't disagree.
+
+How it fits
+    The planning engine (`app/planning/`) is pure: it receives a `BusinessRules` instance
+    as an argument and never imports settings or reads the clock. Services build the
+    instance with `get_business_rules()` and pass it in. Tests construct their own
+    instance with `dataclasses.replace(rules, ...)` to try other values.
+
+What is NOT here
+    - Per-vendor lead times and cushion: those are Dana's knowledge and live in the
+      `vendor_settings` table (seeded from data/reference/vendor_settings_seed.csv,
+      editable on the Lead times page).
+    - Which locations are sellable: `locations` table (data/reference/locations.csv).
+    - Pack sizes, stockout windows, excluded orders: data/reference/*.csv.
+
+How to change this
+    Edit the default below, update the "source" text if the reason changed, run
+    `pytest`, and log the change in docs/PROMPT_LOG.md. For a live demo tweak without a
+    deploy, AS_OF_DATE can also come from the environment. The others are deliberately
+    code-reviewed constants (P1 item 8 would make some editable in the UI).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import asdict, dataclass, field, fields, replace
+from datetime import date
+from functools import lru_cache
+from typing import Any
+
+from app.config.settings import get_settings
+
+
+def _rule(default: Any, *, doc: str, source: str, unit: str = "") -> Any:
+    """Declare a rule field with its explanation attached as metadata.
+
+    `doc` is plain English for Dana. `source` says why the value is what it is.
+    `unit` is shown next to the value ("days", "weeks", "x").
+    """
+    return field(default=default, metadata={"doc": doc, "source": source, "unit": unit})
+
+
+@dataclass(frozen=True)
+class BusinessRules:
+    """The business rules the planning engine runs on. Immutable on purpose.
+
+    Frozen so a request can never mutate the shared rules by accident. To try a
+    different value, build a new instance: `replace(rules, overstock_weeks=30)`.
+    """
+
+    # ---- Dates -------------------------------------------------------------------------
+    as_of_date: date = _rule(
+        date(2026, 11, 16),
+        doc="The date the tool treats as 'today' for run-out, expiry and lead times.",
+        source="Assignment README: 'Treat Monday, November 16, 2026 as today.' "
+        "Overridable with the AS_OF_DATE env var. Never the computer's clock.",
+    )
+
+    # ---- Stuck with (§6.11) ------------------------------------------------------------
+    six_month_line_months: int = _rule(
+        6,
+        unit="months",
+        doc="A lot with less than this much life left (by its expiry date) is inside "
+        "the six-month line: discount it or move it now.",
+        source="Dana 00:03:30: 'nobody will take it with less than six months left.' (A12, T15)",
+    )
+    overstock_weeks: int = _rule(
+        26,
+        unit="weeks",
+        doc="More than this many weeks of supply on hand counts as overstock.",
+        source="Assumption A14 (not asked). 26 weeks = 6 months of supply.",
+    )
+    harbor_long_weeks: int = _rule(
+        12,
+        unit="weeks",
+        doc="Stock at Harbor Cold Storage when the item has more than this many weeks "
+        "of supply: paying storage on stock that won't be needed for months.",
+        source="Walt 00:03:30: 'Long stock sitting at Harbor is the worst case.' "
+        "Threshold is assumption A14.",
+    )
+
+    # ---- Item lifecycle (§6.4) ---------------------------------------------------------
+    dormant_no_sales_days: int = _rule(
+        60,
+        unit="days",
+        doc="An item with no real sales in this many days and no open PO is treated "
+        "as stopped selling: never suggested for reorder.",
+        source="T06. Dana 00:04:40: 'Some items we just stopped buying.' Pending Dana (email Q5, A05).",
+    )
+
+    # ---- Demand forecast (§6.7) --------------------------------------------------------
+    base_window_days: int = _rule(
+        56,
+        unit="days",
+        doc="How far back we look to measure the current selling rate (last 8 weeks).",
+        source="BUILD_PROMPT §6.7. Long enough to smooth weekly noise, short enough to "
+        "reflect the current level.",
+    )
+    seasonal_window_days: int = _rule(
+        365,
+        unit="days",
+        doc="History used to learn each category's month-by-month pattern.",
+        source="BUILD_PROMPT §6.7. The exports hold one year of sales.",
+    )
+    seasonal_index_min: float = _rule(
+        0.4,
+        unit="x",
+        doc="Lowest allowed seasonal multiplier (a month can't be forecast below 0.4x a normal month).",
+        source="BUILD_PROMPT §6.7 / ADR-016. Clamp guards against noisy small categories.",
+    )
+    seasonal_index_max: float = _rule(
+        2.5,
+        unit="x",
+        doc="Highest allowed seasonal multiplier.",
+        source="BUILD_PROMPT §6.7 / ADR-016.",
+    )
+
+    # ---- Run-out projection and status (§6.8) -------------------------------------------
+    projection_horizon_days: int = _rule(
+        182,
+        unit="days",
+        doc="How far ahead the run-out projection looks. Beyond this we say 'more than 6 months'.",
+        source="BUILD_PROMPT §6.8. 26 weeks covers the longest lead time (12 weeks) twice.",
+    )
+    cover_forecast_days: int = _rule(
+        91,
+        unit="days",
+        doc="Weeks of cover = stock ÷ average weekly forecast over this many days ahead.",
+        source="BUILD_PROMPT §6.8. 13 weeks of forward demand.",
+    )
+    order_this_week_days: int = _rule(
+        7,
+        unit="days",
+        doc="If the latest safe order date is within this many days, the item is 'Order this week'.",
+        source="BUILD_PROMPT §6.8. Dana orders every Monday (00:01:10).",
+    )
+    order_soon_days: int = _rule(
+        21,
+        unit="days",
+        doc="If the latest safe order date is within this many days, the item is 'Order soon'.",
+        source="BUILD_PROMPT §6.8. A three-week heads-up.",
+    )
+    late_po_dependency_days: int = _rule(
+        14,
+        unit="days",
+        doc="If a late PO is due within this many days of an item's run-out date, the "
+        "item is marked as depending on that PO.",
+        source="BUILD_PROMPT §6.8 (depends_on_late_po).",
+    )
+
+    # ---- Incoming supply (§6.6) --------------------------------------------------------
+    overdue_po_assumed_days: int = _rule(
+        7,
+        unit="days",
+        doc="A PO that should already be here but hasn't been received is assumed to "
+        "arrive this many days after today, and is flagged 'late, confirm with vendor'. "
+        "'Should already be here' means its re-derived date is ON OR BEFORE today.",
+        source="Email Q3 default (A03). 'On or before' decided by Ishan 2026-11-25 (A18).",
+    )
+
+    # ---- Fallbacks when Dana hasn't told us (§6.5) -------------------------------------
+    default_lead_time_days: int = _rule(
+        28,
+        unit="days",
+        doc="Lead time used only if a vendor has no lead time from Dana or BlueTide. "
+        "Logged as a warning when used.",
+        source="BUILD_PROMPT §6.5 fallback. Should never be needed with the seeded vendors.",
+    )
+    default_safety_days: int = _rule(
+        7,
+        unit="days",
+        doc="Cushion used if a vendor has none set.",
+        source="BUILD_PROMPT §6.5 fallback. Matches the non-import cushion (A02).",
+    )
+    default_order_cycle_days: int = _rule(
+        7,
+        unit="days",
+        doc="Days between orders, used if a vendor has none set.",
+        source="Dana 00:01:10: 'Every Monday.' (A13)",
+    )
+
+    # ---- Validation bounds for Dana's edits (§8.5) --------------------------------------
+    setting_days_min: int = _rule(
+        1,
+        unit="days",
+        doc="Smallest lead time / cushion / order cycle Dana can type in.",
+        source="BUILD_PROMPT §8.5 (validated 1–365 days).",
+    )
+    setting_days_max: int = _rule(
+        365,
+        unit="days",
+        doc="Largest lead time / cushion / order cycle Dana can type in.",
+        source="BUILD_PROMPT §8.5 (validated 1–365 days).",
+    )
+
+    # ---- Helpers -----------------------------------------------------------------------
+    def describe(self) -> list[dict[str, Any]]:
+        """Every rule with its current value, unit, explanation and source.
+
+        Feeds `GET /api/v1/settings` (Phase 4). Example item:
+        {"name": "six_month_line_months", "value": 6, "unit": "months", "doc": "...", "source": "..."}
+        """
+        out: list[dict[str, Any]] = []
+        for f in fields(self):
+            value = getattr(self, f.name)
+            out.append(
+                {
+                    "name": f.name,
+                    "value": value.isoformat() if isinstance(value, date) else value,
+                    "unit": f.metadata.get("unit", ""),
+                    "doc": f.metadata.get("doc", ""),
+                    "source": f.metadata.get("source", ""),
+                }
+            )
+        return out
+
+    def fingerprint(self) -> str:
+        """Short, stable hash of all values, logged with every computation (§10).
+
+        If two log lines show different fingerprints, the rules changed between them.
+        """
+        payload = json.dumps(asdict(self), default=str, sort_keys=True)
+        return hashlib.sha256(payload.encode()).hexdigest()[:12]
+
+
+@lru_cache
+def get_business_rules() -> BusinessRules:
+    """The rules for this process: the defaults above plus the AS_OF_DATE from the environment."""
+    return replace(BusinessRules(), as_of_date=get_settings().as_of_date)
