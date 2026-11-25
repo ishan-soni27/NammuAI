@@ -241,3 +241,11 @@ port didn't have to be edited by hand.
 DATABASE_URL as Sensitive.
 **AI mistakes caught or corrected:** None. In hindsight, #9's instructions named the setting without saying where it lives in the dashboard.
 **Follow-ups:** Ishan sets the Root Directory to the repo root, adds the two variables and redeploys. Claude smoke-tests.
+
+## #11 | 2026-11-25 13:36 UTC | Secret or config?
+**Prompt (simplified):** In Vercel, should DATABASE_URL and APP_ENV be "secret" or "config"?
+**What changed:** Nothing in the repo.
+**Impact:** DATABASE_URL is a secret (it contains the database password). APP_ENV is plain config (not sensitive).
+**Decisions made (and by whom):** Claude advised; Ishan to set.
+**AI mistakes caught or corrected:** None.
+**Follow-ups:** Redeploy, then Claude smoke-tests.
