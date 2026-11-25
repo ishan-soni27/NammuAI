@@ -44,7 +44,7 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """Run migrations against the live database in one transaction."""
     # Migrations are one-off; don't keep pooled connections around.
-    engine = make_engine(_database_url(), pooled=False)
+    engine = make_engine(_database_url(), pooled=False, connect_timeout=30)  # run from a laptop
     with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
         with context.begin_transaction():

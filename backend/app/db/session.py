@@ -42,11 +42,13 @@ class DatabaseNotConfiguredError(RuntimeError):
     """Raised when code needs the database but DATABASE_URL is empty."""
 
 
-def make_engine(url: str, *, pooled: bool = True) -> Engine:
+def make_engine(url: str, *, pooled: bool = True, connect_timeout: int = 5) -> Engine:
     """Create an engine with the settings described in the module docstring.
 
     `pooled=False` opens a fresh connection per use and keeps none around. Used by
     one-off processes (migrations, the loader CLI) so they don't hold pooler slots.
+    `connect_timeout` (seconds): 5 for the API (same data center as Supabase); one-off
+    jobs run from a laptop pass more, because a home connection can take ~7 s to connect.
     """
     if not url:
         raise DatabaseNotConfiguredError(
@@ -54,7 +56,7 @@ def make_engine(url: str, *, pooled: bool = True) -> Engine:
         )
     connect_args: dict[str, object] = {}
     if url.startswith("postgresql"):
-        connect_args = {"connect_timeout": 5, "prepare_threshold": None}
+        connect_args = {"connect_timeout": connect_timeout, "prepare_threshold": None}
     if not pooled:
         return create_engine(url, poolclass=NullPool, connect_args=connect_args)
     serverless = get_settings().is_serverless
