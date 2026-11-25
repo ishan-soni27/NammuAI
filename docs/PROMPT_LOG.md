@@ -134,3 +134,21 @@ Pending Ishan.
 **AI mistakes caught or corrected:** None. In hindsight, Claude should have explained the hosting pieces in plain
 words in Phase 1 before handing over deploy steps.
 **Follow-ups:** Ishan: backend/.env, keep or drop Render, Vercel project. Claude: migration, CORS, smoke test.
+
+## #6 | 2026-11-25 12:35 UTC | Vercel is live; what goes in the env vars; what to pick in Supabase "Connect"
+**Prompt (simplified):** Vercel is deployed at https://nammu-ai.vercel.app/. What goes in Environment Variables, and what
+should the Supabase project be connected with?
+**What changed:** `frontend/src/api/client.ts` (a blank VITE_API_BASE_URL now falls back; a 2xx that isn't JSON raises a
+visible error). `frontend/src/pages/MondayPage.tsx` (the status panel shows which API the site is calling).
+**Impact:** Claude checked the live site with curl. The root and the deep link /items/SHR-1620 both return 200, so the SPA
+rewrite works. But the built bundle had an **empty** API base URL: the Vercel variable was saved blank, so every call
+went to the website itself, got HTML back, and the page rendered blank with no error. After the fix the page shows
+"couldn't reach the server" until Render is up, and the status panel names the API URL.
+**Decisions made (and by whom):** Supabase "Connect" → Connection String → URI → Session pooler (Claude's advice). Don't use
+the Supabase–Vercel integration or the app-framework keys: the browser never talks to Supabase directly. The Vercel
+variable gets its real value once Render is deployed.
+**AI mistakes caught or corrected:** **Claude's bug.** `??` only falls back on undefined, not on an empty string, and
+`response.json().catch(() => null)` let a non-JSON 200 pass as data. Found by inspecting the live bundle, not by a test.
+The frontend has no unit tests yet (the spec's gate is build + lint); a client test is worth adding in Phase 5.
+**Follow-ups:** Ishan: backend/.env, deploy Render, then set VITE_API_BASE_URL and redeploy. Claude: set Render
+CORS_ORIGINS to https://nammu-ai.vercel.app.

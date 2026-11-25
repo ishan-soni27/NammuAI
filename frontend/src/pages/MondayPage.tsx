@@ -4,6 +4,7 @@
  * with "What to order" and "What you're stuck with".
  * Fed by: GET /api/v1/health.
  */
+import { API_BASE_URL } from "../api/client";
 import { useHealth } from "../api/health";
 import type { HealthResponse } from "../api/types";
 import { ColdStartNotice } from "../components/ColdStartNotice";
@@ -53,7 +54,7 @@ export function MondayPage() {
           </ul>
           <p className="mt-4 text-sm text-fog">
             The Monday screen (what to order and what you're stuck with) comes in a later step.
-            Server version {health.data.version}.
+            Server version {health.data.version}, at {API_BASE_URL}.
           </p>
         </section>
       )}

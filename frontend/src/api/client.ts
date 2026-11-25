@@ -13,9 +13,14 @@
 import { getActor } from "../lib/actor";
 import type { ApiErrorBody } from "./types";
 
-export const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1"
-).replace(/\/+$/, "");
+const LOCAL_API = "http://localhost:8000/api/v1";
+
+// `||`, not `??`: a variable saved with a blank value (easy to do in Vercel's settings) must
+// also fall back. Otherwise every call goes to the website itself and returns its HTML page.
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL?.trim() || LOCAL_API).replace(
+  /\/+$/,
+  "",
+);
 
 export class ApiError extends Error {
   readonly code: string;
@@ -73,6 +78,17 @@ export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> 
       "http_error",
       response.status,
       serverRequestId,
+    );
+  }
+  if (body === null) {
+    // A 2xx that isn't JSON almost always means we called the website instead of the API
+    // (wrong or missing VITE_API_BASE_URL). Fail loudly instead of rendering a blank page.
+    console.error(`Expected JSON from ${API_BASE_URL}${path}; check VITE_API_BASE_URL.`);
+    throw new ApiError(
+      "The server sent back something we couldn't read.",
+      "unexpected_response",
+      response.status,
+      response.headers.get("X-Request-ID") ?? requestId,
     );
   }
   return body as T;
