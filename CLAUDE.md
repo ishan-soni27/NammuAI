@@ -8,7 +8,8 @@ frozen seafood distributor) that answers two questions on Monday morning: **what
 arrive, and what is she stuck with** (stock inside the six-month line, or long stock at Harbor). It counts only sellable
 stock and real demand, every number drills down to its source rows, and Dana can tell it what it doesn't know (lead
 times, PO dates, "I've handled this"). Stack: FastAPI + SQLAlchemy + Alembic (Python 3.12) → Supabase Postgres;
-React + Vite + TypeScript (strict) → Vercel; API on Render. Ishan decides; Claude implements, explains and flags.
+React + Vite + TypeScript (strict). Both the website and the API run on Vercel (two projects, one repo). Ishan decides;
+Claude implements, explains and flags.
 
 ## After every prompt from Ishan
 **Append an entry to `docs/PROMPT_LOG.md` before your final message** (format in BUILD_PROMPT §13.2). No exceptions,
@@ -57,11 +58,12 @@ scripts/                     profile_data.py, compare_answer_key.py
 # Backend (Python 3.12.12: /opt/homebrew/bin/python3.12)
 cd backend && /opt/homebrew/bin/python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
-cp .env.example .env                # then paste the Supabase *session pooler* URL into DATABASE_URL
+cp .env.example .env                # paste the Supabase *session pooler* URL (port 5432) into DATABASE_URL
+python3 ../scripts/set_database_password.py   # puts the password in safely (hidden, URL-encoded)
 alembic upgrade head                # create/upgrade tables (RLS on every table)
 python -m app.loader.run            # one-time load (idempotent for the clean layer)  [Phase 2]
 uvicorn app.main:app --reload       # http://localhost:8000/docs
-pytest                              # all tests (never touches the real DB; see tests/conftest.py)
+pytest                              # all tests (never touches the real DB; see tests/conftest.py; config in pytest.ini)
 ruff check . && ruff format --check .
 
 # Frontend (Node >= 22.12)
@@ -74,10 +76,16 @@ npm run build && npm run lint && npm run format:check
 shasum -a 256 -c data/raw_checksums.sha256
 ```
 
-## Deploy
-- API: Render Blueprint from `render.yaml` (root `backend`, health check `/api/v1/health`). Secrets: `DATABASE_URL`, `CORS_ORIGINS`.
-- Web: Vercel, root `frontend`, env `VITE_API_BASE_URL=<render url>/api/v1`. `frontend/vercel.json` rewrites deep links to index.html.
-- Migrations run from a laptop (`alembic upgrade head`), not on deploy.
+## Deploy (Vercel, two projects from this repo; ADR-002)
+- **API project**, Root Directory `backend`, framework FastAPI (auto-detected: Vercel finds `app/main.py` → `app`).
+  Env: `DATABASE_URL` = Supabase **transaction pooler** (port 6543), `CORS_ORIGINS=https://nammu-ai.vercel.app,http://localhost:5173`,
+  `APP_ENV=production`. `backend/vercel.json`: region iad1 (next to Supabase us-east-1) and a daily cron on /api/v1/health
+  so Supabase never pauses.
+- **Web project** (https://nammu-ai.vercel.app), Root Directory `frontend`, env `VITE_API_BASE_URL=<api url>/api/v1`
+  (built into the bundle, so redeploy after changing it). `frontend/vercel.json` rewrites deep links to index.html.
+- Migrations run from a laptop (`alembic upgrade head`, session pooler), never on deploy.
+- **Never add a `backend/pyproject.toml` without a `[project]` table.** Vercel would treat it as the dependency list and
+  ignore requirements.txt. Tool config lives in `pytest.ini` / `ruff.toml` (guarded by tests/unit/test_deploy_config.py).
 
 ## Live-change playbook (BUILD_PROMPT §17)
 | Likely request | Where to change |
@@ -97,3 +105,4 @@ Each row should be a small, tested change. If one isn't, refactor it in Phase 6.
 - Frontend is **TypeScript** (strict).
 - Client files are **copied** (originals in `kestrel-bay/`, committed). Copies have distinct names (`bluetide_*.csv`, `ASSIGNMENT.md`, `KICKOFF_TRANSCRIPT.md`).
 - A PO whose re-derived ETA is **on or before** AS_OF counts as late (`<=`, not `<`), so PO-260407 gets ETA Nov 23 (A18).
+- The **API runs on Vercel**, not Render (2026-11-25, ADR-002). BUILD_PROMPT §8.1/§15 still say Render; this overrides it.

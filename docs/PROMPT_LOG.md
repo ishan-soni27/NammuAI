@@ -165,3 +165,37 @@ Tests still pass with a real .env present (58), which confirms conftest isolatio
 **AI mistakes caught or corrected:** None.
 **Follow-ups:** Ishan: put the password in backend/.env, then create the Render account and Blueprint. Claude: run
 `alembic upgrade head`, verify RLS, smoke-test.
+
+## #8 | 2026-11-25 13:13 UTC | "Nowhere to put the password"; why Render? → API moves to Vercel; database created
+**Prompt (simplified):** There's nowhere in backend/.env for the password. Why Render? Ishan has never needed it for full-stack sites.
+**What changed:**
+- `scripts/set_database_password.py`: hidden prompt, URL-encodes the password, writes it into DATABASE_URL. Tested on a
+  scratch copy with a nasty password; the real file was untouched by the test.
+- **Ishan chose Vercel for the API** (AskUserQuestion; Claude now recommended it).
+  - `render.yaml` deleted; `backend/vercel.json` added (region iad1 + daily cron on /health).
+  - `backend/pyproject.toml` replaced by `pytest.ini` + `ruff.toml`.
+  - `.python-version` changed 3.12.12 → 3.12; requirements comments moved onto their own lines.
+  - Settings now read `VERCEL_GIT_COMMIT_SHA` and `VERCEL`; the DB pool is 1+2 on serverless.
+  - Comments de-Rendered; cold-start copy updated (seconds, not 30 s).
+  - New `tests/unit/test_deploy_config.py` (7 guards).
+- ADR-002 rewritten; CLAUDE.md deploy section + decision list updated.
+- **Database created in Supabase:** `alembic upgrade head` (revision 0001).
+**Impact:**
+- Supabase now has 22 tables (21 + alembic_version), all with RLS on and no policies. Proven with a rolled-back row: the
+  backend role saw 1 row, Supabase's public `anon` role saw 0, and an anon insert was rejected by RLS.
+- `/health` against the real DB: `status: ok, db: ok, schema_ready: true`.
+- The transaction pooler (6543) was verified with repeated statements.
+- 66 tests pass; ruff, ESLint, Prettier and the build are clean.
+**Decisions made (and by whom):** Ishan: API on Vercel (ADR-002). Claude: transaction pooler for the deployed API and
+session pooler for migrations, the iad1 region, the daily cron as Supabase keep-alive, and tool config out of pyproject.
+**AI mistakes caught or corrected:**
+- **The original pyproject.toml would have broken the Vercel deploy.** Reading Vercel's builder source showed that any
+  pyproject.toml becomes the dependency list and requirements.txt is ignored. Claude had created that file in Phase 1
+  for tool settings only. Caught before any deploy, now guarded by a test.
+- The `.env` placeholder design invited a mistake: Ishan's password went in with the square brackets still around it, and
+  Supabase rejected it. Claude diagnosed this without printing the secret, confirmed the bracket-less password connects,
+  then fixed the file (value never shown). The helper script prevents it next time.
+- Claude's first version of the cron test assumed `route.path` on FastAPI 0.165's included routers. Rewritten to call the route.
+- On "why Render": the build prompt's choice was passed along without checking it against Ishan's experience until he asked.
+**Follow-ups:** Ishan creates the Vercel API project (root `backend`) with DATABASE_URL (port 6543), CORS_ORIGINS and
+APP_ENV, then sets VITE_API_BASE_URL on the web project and redeploys. Claude smoke-tests both live URLs.

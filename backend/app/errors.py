@@ -4,7 +4,8 @@ Purpose
     Whatever goes wrong, the frontend gets the same JSON:
         {"error": {"code": "not_found", "message": "We couldn't find item XYZ.", "request_id": "3f2c..."}}
     `message` is plain English that can be shown to Dana as is. `request_id` is the
-    "reference id" the UI shows, so Ishan can find the matching log lines on Render.
+    "reference id" the UI shows, so Ishan can find the matching log lines (Vercel logs, or
+    the request_log table).
 
 How it fits
     - Code raises `AppError(...)` for expected problems (unknown item, bad date, etc.).

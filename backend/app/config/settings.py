@@ -1,7 +1,7 @@
 """Environment configuration (infrastructure only, no business rules).
 
 Purpose
-    One typed place for everything that differs between a laptop, Render and the test
+    One typed place for everything that differs between a laptop, Vercel and the test
     suite: the database URL, CORS origins, log level and the business "today"
     (AS_OF_DATE). Values come from environment variables or `backend/.env`.
 
@@ -17,11 +17,11 @@ Key decisions
       (BUILD_PROMPT invariant #1).
     - Supabase hands out `postgresql://` URLs. SQLAlchemy needs `postgresql+psycopg://` to
       pick the psycopg 3 driver, so we normalize it here rather than make Ishan edit the
-      string by hand (a classic "works locally, broken on Render" trap).
+      string by hand (a classic "works locally, broken in production" trap).
 
 How to change this
     Add a new env var: add a typed field below (with a default if it is optional), document
-    it in `backend/.env.example`, and set it in Render's dashboard.
+    it in `backend/.env.example`, and set it in the Vercel API project (Settings → Environment Variables).
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/ (this file is backend/app/config/settings.py)
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
         env_file_encoding="utf-8",
-        extra="ignore",  # Render injects many unrelated env vars; ignore them.
+        extra="ignore",  # Vercel injects many unrelated env vars; ignore them.
     )
 
     # Empty string means "not configured". The API still boots, and /health reports
@@ -63,8 +63,12 @@ class Settings(BaseSettings):
     # "production" hides exception details from error responses (they still go to logs).
     app_env: str = "local"
 
-    # Render sets RENDER_GIT_COMMIT automatically; recorded on load runs and in /health.
-    render_git_commit: str = ""
+    # Git commit of the running code, shown in /health and recorded on load runs.
+    # Vercel sets VERCEL_GIT_COMMIT_SHA automatically; GIT_COMMIT works anywhere else.
+    git_commit: str = Field(default="", validation_alias=AliasChoices("VERCEL_GIT_COMMIT_SHA", "GIT_COMMIT"))
+
+    # Vercel sets VERCEL=1 inside its functions. We use it to size the DB pool (see db/session.py).
+    vercel: str = ""
 
     @field_validator("database_url")
     @classmethod
@@ -92,6 +96,11 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env.lower() == "production"
+
+    @property
+    def is_serverless(self) -> bool:
+        """True when running as a Vercel serverless function (ADR-002)."""
+        return self.vercel == "1"
 
 
 @lru_cache

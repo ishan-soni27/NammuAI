@@ -6,12 +6,14 @@ Purpose
 
 Key decisions
     - Lazy: the app can boot (and /health can say "not_configured") even if DATABASE_URL
-      is missing, so a missing secret on Render is obvious instead of a crash loop.
-    - Small pool (5 + 5 overflow). Supabase's free session pooler allows only a handful of
-      connections, and one Render instance with about 30 items needs very few.
-    - `pool_pre_ping`: Supabase and its pooler drop idle connections, and Render sleeps
-      after 15 minutes. Pre-ping replaces a dead connection instead of failing the first
-      request after a wake-up.
+      is missing, so a missing secret in production is obvious instead of a crash loop.
+    - Small pool. On Vercel (serverless, ADR-002) many function instances may run at once,
+      each with its own pool, so each keeps at most 1 + 2 connections, and the deployed
+      DATABASE_URL uses Supabase's *transaction* pooler (port 6543), which multiplexes them.
+      Locally (one process) the pool is 5 + 5 against the session pooler (port 5432).
+    - `pool_pre_ping`: Supabase's pooler drops idle connections, and an idle serverless
+      instance can be frozen between requests. Pre-ping replaces a dead connection instead of
+      failing the first request after a quiet spell.
     - `connect_timeout=5`: if the database is paused or unreachable, /health answers in
       seconds instead of hanging until the browser gives up.
     - `prepare_threshold=None` turns off psycopg's server-side prepared statements. They
@@ -55,11 +57,12 @@ def make_engine(url: str, *, pooled: bool = True) -> Engine:
         connect_args = {"connect_timeout": 5, "prepare_threshold": None}
     if not pooled:
         return create_engine(url, poolclass=NullPool, connect_args=connect_args)
+    serverless = get_settings().is_serverless
     return create_engine(
         url,
         pool_pre_ping=True,
-        pool_size=5,
-        max_overflow=5,
+        pool_size=1 if serverless else 5,
+        max_overflow=2 if serverless else 5,
         pool_recycle=300,  # seconds; recycle before the pooler's idle timeout
         connect_args=connect_args,
     )

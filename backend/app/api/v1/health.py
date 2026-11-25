@@ -36,5 +36,5 @@ def health(
         schema_ready=db_health.schema_ready,
         as_of=rules.as_of_date,
         last_load_at=db_health.last_load_at,
-        version=(settings.render_git_commit[:7] or "local"),
+        version=(settings.git_commit[:7] or "local"),
     )

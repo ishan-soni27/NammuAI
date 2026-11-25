@@ -2,15 +2,15 @@
 
 Purpose
     Backs `GET /api/v1/health`, which serves three audiences:
-      - Render's health check (is the process up?),
-      - the keep-warm ping every 10 minutes (it touches the DB, which also stops Supabase's
+      - uptime checks (is the API up?),
+      - the daily Vercel cron in backend/vercel.json (it touches the DB, which stops Supabase's
         free tier from pausing the project after a week idle, §15),
       - the web app, which shows "Data as of ..." and a friendly message if the DB is down.
 
 Key decision
     This never raises. A database problem is reported as `db = "down"` instead of an
-    exception. The endpoint can then always answer 200, and Render won't restart a
-    healthy API process just because Supabase is waking up.
+    exception. The endpoint can then always answer 200, and the UI can say exactly what is
+    wrong ("the database isn't responding") instead of a generic failure.
 
 How to change this
     Add a check (e.g. "is the latest load older than a week?"): extend `DatabaseHealth`

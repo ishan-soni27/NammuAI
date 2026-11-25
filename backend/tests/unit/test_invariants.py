@@ -117,8 +117,8 @@ def test_env_example_documents_every_setting() -> None:
 
     example = (BACKEND_DIR / ".env.example").read_text()
     documented = {m.group(1).lower() for m in re.finditer(r"^([A-Z_]+)=", example, re.MULTILINE)}
-    # render_git_commit is set by Render itself, not by us.
-    expected = set(Settings.model_fields) - {"render_git_commit"}
+    # Set by the hosting platform itself (Vercel), not by us.
+    expected = set(Settings.model_fields) - {"git_commit", "vercel"}
     assert expected <= documented, f"Missing from .env.example: {expected - documented}"
 
 

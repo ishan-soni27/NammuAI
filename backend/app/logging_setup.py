@@ -1,7 +1,7 @@
 """Structured JSON logging (logging layer 1 of 4, BUILD_PROMPT §10 / ADR-010).
 
 Purpose
-    Every log line is one JSON object on stdout, so Render's log viewer (and any log tool
+    Every log line is one JSON object on stdout, so Vercel's log viewer (and any log tool
     later) can filter by request_id, actor or event. Example line:
     {"timestamp": "2026-11-25T12:00:00.123+00:00", "level": "INFO", "logger": "app.request",
      "message": "request finished", "request_id": "3f2c...", "actor": "Dana",

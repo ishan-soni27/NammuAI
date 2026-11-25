@@ -7,7 +7,7 @@ export function ColdStartNotice() {
     <div role="status" className="rounded-lg border border-rope bg-hull px-5 py-4 text-ink">
       <p className="font-semibold">Waking up the server.</p>
       <p className="mt-1 text-fog">
-        Free hosting sleeps when idle. This usually takes about 30 seconds.
+        Free hosting pauses when nobody is using it. This usually takes a few seconds.
       </p>
     </div>
   );

@@ -41,7 +41,7 @@ def test_health_degraded_when_db_down(app: FastAPI) -> None:
     _override_db(app, DatabaseHealth(db="down", schema_ready=False, last_load_at=None))
     with TestClient(app) as c:
         r = c.get("/api/v1/health")
-    # Still 200 on purpose: Render must not restart a healthy API because Supabase is waking up.
+    # Still 200 on purpose: the UI can then explain the problem instead of showing a generic failure.
     assert r.status_code == 200
     assert r.json()["status"] == "degraded"
     assert r.json()["db"] == "down"

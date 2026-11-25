@@ -13,7 +13,7 @@ Middleware order (it matters)
 
 How to change this
     New router: add it in `app/api/v1/__init__.py`, not here.
-    New allowed web origin: set CORS_ORIGINS on Render (comma-separated), no code change.
+    New allowed web origin: set CORS_ORIGINS in the Vercel API project (comma-separated), no code change.
 """
 
 from __future__ import annotations
