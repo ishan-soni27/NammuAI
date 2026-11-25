@@ -152,3 +152,16 @@ variable gets its real value once Render is deployed.
 The frontend has no unit tests yet (the spec's gate is build + lint); a client test is worth adding in Phase 5.
 **Follow-ups:** Ishan: backend/.env, deploy Render, then set VITE_API_BASE_URL and redeploy. Claude: set Render
 CORS_ORIGINS to https://nammu-ai.vercel.app.
+
+## #7 | 2026-11-25 12:52 UTC | Supabase connection string shared; where is Render?
+**Prompt (simplified):** Shared the Supabase session-pooler string (with the password placeholder, no secret) and asked
+where to find Render.
+**What changed:** `render.yaml` now has `region: virginia`. Created local `backend/.env` (gitignored, not committed) with
+that string plus `?sslmode=require` and both CORS origins, leaving the password for Ishan to fill in.
+**Impact:** The API will run in the same AWS region as the database (us-east-1), so there are no cross-country round trips
+per query. The region has to be set before the Render service exists, because Render can't move a service later.
+Tests still pass with a real .env present (58), which confirms conftest isolation.
+**Decisions made (and by whom):** Claude matched the Render region to Supabase. Ishan's message implies Render stays for the API.
+**AI mistakes caught or corrected:** None.
+**Follow-ups:** Ishan: put the password in backend/.env, then create the Render account and Blueprint. Claude: run
+`alembic upgrade head`, verify RLS, smoke-test.

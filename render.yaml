@@ -6,6 +6,7 @@ services:
     name: kestrel-bay-api
     runtime: python
     plan: free # sleeps after ~15 min idle; the UI shows a "waking up" note (§9.4)
+    region: virginia # same AWS region as the Supabase database (us-east-1), so queries stay local
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
