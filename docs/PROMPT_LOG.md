@@ -108,3 +108,14 @@ uvicorn run served `/api/v1/health` and `/docs`, and a CORS preflight with X-Act
 **Follow-ups:** Ishan creates `backend/.env` with the Supabase session-pooler URL, then Claude runs `alembic upgrade head`
 and verifies RLS. Ishan creates the Render Blueprint and the Vercel project; Claude smoke-tests the live URLs.
 UptimeRobot keep-warm in Phase 6 (or sooner if Ishan wants).
+
+## #4 | 2026-11-25 12:15 UTC | What's needed from Supabase; GitHub Pages instead of Vercel?
+**Prompt (simplified):** What exactly does Claude need from Supabase, and can GitHub Pages replace Vercel?
+**What changed:** Nothing in the code. This log entry only.
+**Impact:** None yet. Explained that the only Supabase input is the session-pooler connection string (no API keys,
+no tables or policies made by hand). Laid out the GitHub Pages tradeoffs: no rewrites, so deep links need a 404.html
+fallback; a /NammuAI/ base path; deploys through GitHub Actions; up to about 10 minutes of CDN caching after a deploy.
+**Decisions made (and by whom):** Pending Ishan: Vercel (the spec, ADR-002) or GitHub Pages. Claude recommended Vercel
+for clean deep links and fast deploys during the live change, but said Pages is workable.
+**AI mistakes caught or corrected:** None.
+**Follow-ups:** Ishan to pick a host and add backend/.env. If Pages, update ADR-002 and add the workflow + Vite base path.
