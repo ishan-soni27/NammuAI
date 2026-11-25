@@ -1,0 +1,21 @@
+# SHA-256 of the original client zip contents (kestrel-bay/) and their byte-identical working copies.
+# Each original is listed directly above its copy, so the matching hashes sit side by side.
+# Verify with:  shasum -a 256 -c data/raw_checksums.sha256   (run from the repo root)
+9d824a46761a57335bcf49c0c01f81a264846bb5789843a77075512dd538ef25  kestrel-bay/data/customers.csv
+9d824a46761a57335bcf49c0c01f81a264846bb5789843a77075512dd538ef25  data/raw/bluetide_customers.csv
+83c832dd647bfff22d4edaa22543065d0b52781901cb7c698c0f86a3de2538ec  kestrel-bay/data/inventory_on_hand.csv
+83c832dd647bfff22d4edaa22543065d0b52781901cb7c698c0f86a3de2538ec  data/raw/bluetide_inventory_on_hand.csv
+3c6c0c5cd31e0da390739640d53315c2e63e23bd9079ea37859baeca013b6420  kestrel-bay/data/items.csv
+3c6c0c5cd31e0da390739640d53315c2e63e23bd9079ea37859baeca013b6420  data/raw/bluetide_items.csv
+e1dadbd9d7db6d1cd6ff6046621227f230e4c220d6550ada5546157b6ab300fe  kestrel-bay/data/price_list.csv
+e1dadbd9d7db6d1cd6ff6046621227f230e4c220d6550ada5546157b6ab300fe  data/raw/bluetide_price_list.csv
+d0a71f10e11a559de01e959d878da3c6876320285387ad73c8fa668b78f8ddfe  kestrel-bay/data/purchase_orders.csv
+d0a71f10e11a559de01e959d878da3c6876320285387ad73c8fa668b78f8ddfe  data/raw/bluetide_purchase_orders.csv
+972a6721c92a4f44c3d8429662c7620ab7d9b70c3abc81849214cd2c5327fae0  kestrel-bay/data/sales_lines.csv
+972a6721c92a4f44c3d8429662c7620ab7d9b70c3abc81849214cd2c5327fae0  data/raw/bluetide_sales_lines.csv
+a62dfe4c48e242dbc6af996faff002031d183f424c9960ff32a21edf94e0921e  kestrel-bay/data/vendors.csv
+a62dfe4c48e242dbc6af996faff002031d183f424c9960ff32a21edf94e0921e  data/raw/bluetide_vendors.csv
+07118ee5a64e615adf08685aede478e337138f24e61d19ece2db6f4297b299bb  kestrel-bay/README.md
+07118ee5a64e615adf08685aede478e337138f24e61d19ece2db6f4297b299bb  docs/client/ASSIGNMENT.md
+d0b4c8ff9ce6cfdb14577ed577cd2df6aff64940c5b1700a328bfc72ebec843e  kestrel-bay/kickoff-call-transcript.md
+d0b4c8ff9ce6cfdb14577ed577cd2df6aff64940c5b1700a328bfc72ebec843e  docs/client/KICKOFF_TRANSCRIPT.md
