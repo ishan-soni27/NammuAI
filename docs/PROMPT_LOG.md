@@ -119,3 +119,18 @@ fallback; a /NammuAI/ base path; deploys through GitHub Actions; up to about 10 
 for clean deep links and fast deploys during the live change, but said Pages is workable.
 **AI mistakes caught or corrected:** None.
 **Follow-ups:** Ishan to pick a host and add backend/.env. If Pages, update ADR-002 and add the workflow + Vite base path.
+
+## #5 | 2026-11-25 12:21 UTC | Why Render and render.yaml? Why not Supabase's API? How to set up Vercel
+**Prompt (simplified):** It must be a real full-stack app that works in the future. Why aren't we using Supabase's API,
+why do we have Render and a YAML file, and what are the Vercel setup steps? Ishan chose Vercel for the frontend.
+**What changed:** Nothing in the code. This log entry only.
+**Impact:** Explained the three-part architecture: Vercel serves the website, Render runs the Python API, and Supabase
+stores all data, including every edit Dana makes. render.yaml is only Render's settings file. Explained why the
+browser doesn't call Supabase's auto-generated API directly: the planning logic is Python, writes need validation and
+an audit row in the same transaction, and no database keys should sit in the browser. Gave the Vercel setup steps.
+**Decisions made (and by whom):** Ishan chose Vercel over GitHub Pages for the frontend (ADR-002 unchanged). Claude
+recommended keeping Render for the API, and offered "API on Vercel too" as the alternative if Ishan wants one platform.
+Pending Ishan.
+**AI mistakes caught or corrected:** None. In hindsight, Claude should have explained the hosting pieces in plain
+words in Phase 1 before handing over deploy steps.
+**Follow-ups:** Ishan: backend/.env, keep or drop Render, Vercel project. Claude: migration, CORS, smoke test.
