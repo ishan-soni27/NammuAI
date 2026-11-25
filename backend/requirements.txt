@@ -1,0 +1,10 @@
+# Runtime dependencies for the Kestrel Bay API (Render installs exactly these).
+# Pinned so a deploy next week builds the same thing as today. Upgrade deliberately, then re-run pytest.
+fastapi==0.165.0            # HTTP API + OpenAPI docs at /docs (ADR-001)
+uvicorn[standard]==0.54.0   # ASGI server; Render start command runs it
+SQLAlchemy==2.1.9           # ORM / query layer (typed 2.x style)
+alembic==1.20.1             # schema migrations (ADR-015)
+pydantic==2.14.4            # request/response models
+pydantic-settings==2.16.3   # typed env config (app/config/settings.py)
+psycopg[binary]==3.3.9      # Postgres driver (Supabase)
+python-json-logger==4.2.0   # JSON log lines to stdout (logging layer 1, §10)

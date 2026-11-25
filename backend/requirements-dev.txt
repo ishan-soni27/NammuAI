@@ -1,0 +1,4 @@
+# Local development and CI only. Install with:  pip install -r requirements.txt -r requirements-dev.txt
+pytest==9.2.0
+httpx2==2.16.2              # FastAPI/Starlette TestClient transport (Starlette 1.x prefers httpx2 over httpx)
+ruff==0.17.6                # lint + format (BUILD_PROMPT §12)
