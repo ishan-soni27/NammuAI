@@ -1,0 +1,6 @@
+code,name,is_sellable,is_third_party_storage,may_return_to_stock,description
+NB,New Bedford,true,false,false,"Main building (Dana, call 00:03:30)"
+PVD,Providence,true,false,false,"Smaller building (Dana, call 00:03:30)"
+HCS,Harbor Cold Storage,true,true,false,"Third-party overflow, charged per pallet per month. Long stock here is the worst case (Walt, call 00:03:30)"
+QA-HOLD,QA hold,false,false,true,"Pretend location: waiting on paperwork or a temperature check, sometimes it passes and comes back (Walt, call 00:04:40, T11). Not counted, shown separately. Pending Dana (email Q4, A04)"
+DAMAGED,Damaged,false,false,false,"Pretend location: written off eventually (Walt, call 00:04:40, T11). Not counted"

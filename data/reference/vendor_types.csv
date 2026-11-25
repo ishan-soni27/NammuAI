@@ -1,0 +1,9 @@
+vendor_code,vendor_type,note
+BXE,stock_supplier,"Bien Xanh, Vietnam: shrimp, pangasius, calamari (call 00:00:00)"
+AFS,stock_supplier,"Austral Frio, Chile: salmon (call 00:00:00). BlueTide payment_terms says CAD (currency in the wrong column, T28)"
+MNP,stock_supplier,"Maritime Northern Pack, Canada: cod, haddock, snow crab, scallops (call 00:00:00)"
+ASP,stock_supplier,"Aleutian Shore, Alaska: pollock (call 00:00:00)"
+DLC,stock_supplier,"Downeast Lobster, Maine: lobster (call 00:00:00)"
+BBD,fresh_supplier,"Buzzards Bay Day Boats: fresh, daily, out of scope (call 00:00:00, T07)"
+HCS,service_provider,"Harbor Cold Storage: third-party warehouse that charges per pallet per month, not a seafood vendor (call 00:03:30, T28)"
+OCN,legacy,"Oceanic Trading Corp (old): vendor of TIL-FIL and the ZZ items (T05, T06, T28)"

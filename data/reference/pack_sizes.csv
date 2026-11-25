@@ -1,0 +1,46 @@
+item_code,pack_size_raw,lb_per_case,verified_by,note
+CAL-RING,6x2.2lb,13.2,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),6 bags x 2.2 lb
+COD-FIL,5kg,11.0231,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Metric pack: 5 kg x 2.20462 lb/kg (T09)
+COD-LOIN,10 lb cs,10,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Alias row 'COD-LOIN ' has the same pack text
+CRAB-MEAT,6x1lb,6,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),6 x 1 lb
+CRAB-SNW5,30 lb cs,30,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),
+CRAB-SNW8,30lb,30,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),
+FR-COD,per lb,,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Fresh LB item; out of scope (T07); no conversion needed
+FR-FLK,per lb,,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Fresh LB item; out of scope (T07); no conversion needed
+FR-HAD,per lb,,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Fresh LB item; out of scope (T07); no conversion needed
+FR-HAL,per lb,,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Fresh LB item; out of scope (T07); no conversion needed
+FR-SCAL,per lb,,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Fresh LB item; out of scope (T07); no conversion needed
+FR-SWD,per lb,,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Fresh LB item; out of scope (T07); no conversion needed
+HAD-FIL,10#,10,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),'#' means lb
+HAD-LOIN,10 lb,10,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),
+LOB-MEAT,6x2lb,12,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),6 x 2 lb
+LOB-T56,10 lb cs,10,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Has LB lots on hand (T10); 220 lb + 160 lb = 38 cs
+LOB-T810,10lb cs,10,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),
+PAN-0507,15lb,15,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),
+PAN-0709,15 lb case,15,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),
+PAN-1012,15lb,15,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),
+PAN-PORT4,4x2.5lb,10,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),4 x 2.5 lb
+POL-BLK,16.5 lb block,,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Sold by the pound (sell_uom LB); planned in lb so no case factor is needed
+POL-BRD,4x3lb,12,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),4 x 3 lb
+POL-FIL,10 lb,10,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),
+SAL-CHO6,10lb,10,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),
+SAL-POR4,4x2.5lb,10,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),4 x 2.5 lb
+SAL-POR6,10 lb cs,10,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Alias row 'Sal-Por6' says '10lb'
+SAL-POR8,10 LB CS,10,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),
+SAL-SIDE,catch wt,,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Catch weight; sold by the pound (sell_uom LB)
+SAL-SIDE-SK,catch wt,,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Catch weight; sold by the pound (sell_uom LB)
+SCL-U10,5 lb cs,5,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),
+SHR-1215,5x2lb,10,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),5 x 2 lb
+SHR-1620,10x2lb,20,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),10 x 2 lb; alias row 'shr-1620 ' says '10/2#'
+SHR-2125,10x2lb,20,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),10 x 2 lb
+SHR-2630,20 lb cs,20,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),
+SHR-3140C,5x2#,10,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),5 x 2 lb ('#' means lb)
+SHR-4150,5 x 2 lb,10,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),
+SHR-6170,5x2lb,10,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),
+TIL-FIL,15 lb cs,15,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),
+ZZ-COD-0003,,,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Legacy ZZ item (T05); never planned; all lots are CS
+ZZ-LOB-0004,,,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Legacy ZZ item (T05); never planned; all lots are CS
+ZZ-MISC-0011,,,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Legacy ZZ item (T05); never planned; all lots are CS
+ZZ-SAL-0007,,,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Legacy ZZ item (T05); never planned; all lots are CS
+ZZ-SCL-0002,,,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Legacy ZZ item (T05); never planned; all lots are CS
+ZZ-SHR-0001,,,BUILD_PROMPT §6.3 (Ishan + Claude 2026-11-25),Legacy ZZ item (T05); never planned; all lots are CS
