@@ -70,3 +70,41 @@ commit). Claude added `data/reference/README.md` (not in the plan) to explain ho
 **Follow-ups:** Ishan to eyeball `data/reference/pack_sizes.csv` and `vendor_settings_seed.csv` (they're marked as from
 BUILD_PROMPT §6.3/§6.5, not independently verified by a person yet). Phase 1 needs: a Supabase project, a GitHub repo
 (public or private?), and Render + Vercel accounts.
+
+## #3 | 2026-11-25 12:12 UTC | GitHub repo + Supabase ready → Phase 1 walking skeleton
+**Prompt (simplified):** "I've created the GitHub repo (ishan-soni27/NammuAI) and the Supabase project." Interpreted as the
+go-ahead for Phase 1, since those were the two prerequisites Claude asked for.
+**What changed:**
+- Git: added `origin` and pushed `main` (the repo was empty and public).
+- Backend: `app/main.py` (factory), `config/settings.py`, `config/business_rules.py` (all §6 numbers, each with doc + source
+  metadata), `logging_setup.py` (JSON lines), `middleware.py` (request id, actor, timing, 500 safety net), `errors.py`
+  (envelope), `db/models.py` (all 21 tables in §8.3), `db/session.py`, `services/health_service.py`, `api/v1/health.py`,
+  `api/v1/schemas.py`. Alembic setup and migration `0001_initial_schema` (RLS on all 21 tables + alembic_version).
+  Pinned `requirements*.txt`, `pyproject.toml` (pytest + ruff), `.env.example`, `.python-version`.
+- Tests: 58 (health states, request id/actor, error envelope incl. CORS headers on a 500, config, invariants).
+- Frontend: Vite + React 18 + TS strict + Tailwind 4 tokens + TanStack Query + React Router; header with the business
+  date, status panel, loading/error/cold-start states, `vercel.json`, ESLint + Prettier.
+- `render.yaml` Blueprint. CLAUDE.md commands/deploy section; DECISIONS ADR-001 (versions) and ADR-002 (deploy notes).
+**Impact:** The API boots without a database and reports `db: not_configured` (no crash loop). `pytest`: 58 passed.
+`ruff check` + `ruff format --check`: clean. `npm run build`, `npm run lint` and `npm run format:check`: clean. A real
+uvicorn run served `/api/v1/health` and `/docs`, and a CORS preflight with X-Actor/X-Request-ID from localhost:5173 was allowed.
+**Not done yet (blocked on Ishan):** the migration hasn't run against Supabase (no `backend/.env` yet), and nothing is deployed to Render or Vercel.
+**Decisions made (and by whom):** Claude chose these, pending Ishan's review:
+- `/health` always returns 200 and reports DB trouble instead of failing, so Render doesn't restart the API while Supabase wakes up.
+- App-layer tables get no FKs into the clean layer, so a reload can't cascade-delete Dana's edits. A test enforces it.
+- The 500 safety net lives in the middleware, inside CORS, so crashes reach the browser readable.
+- React 18 kept per the spec; TypeScript 5.9 instead of 7.0 (typescript-eslint compatibility); httpx2 for tests.
+- Migrations run from a laptop, not on deploy.
+- Two numbers that were inline in the spec moved into `business_rules.py`: the 14-day late-PO window (§6.8) and the
+  1–365 edit bounds (§8.5).
+**AI mistakes caught or corrected:**
+- Autogenerating the migration against SQLite (there's no local Postgres or Docker) rendered SQLite-flavoured defaults
+  (`CURRENT_TIMESTAMP`) and an unimported `Text()`. Caught in review and hand-fixed; the offline SQL render was then checked
+  (22 CREATE TABLE, 22 ENABLE RLS).
+- The first `env.py` swapped the engine's pool through a private attribute. Replaced it with a proper `pooled=False`
+  option on `make_engine`.
+- Two smaller ones: the first request log duplicated the actor field (removed); the first `errors.py` used a ternary
+  that ruff reformatted into something unreadable (rewritten).
+**Follow-ups:** Ishan creates `backend/.env` with the Supabase session-pooler URL, then Claude runs `alembic upgrade head`
+and verifies RLS. Ishan creates the Render Blueprint and the Vercel project; Claude smoke-tests the live URLs.
+UptimeRobot keep-warm in Phase 6 (or sooner if Ishan wants).

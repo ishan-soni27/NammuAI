@@ -52,24 +52,32 @@ frontend/src/                api/ pages/ components/ lib/ styles/
 scripts/                     profile_data.py, compare_answer_key.py
 ```
 
-## Commands (filled in as each phase lands)
+## Commands
 ```bash
-# Backend (Python 3.12: /opt/homebrew/bin/python3.12)  [Phase 1]
+# Backend (Python 3.12.12: /opt/homebrew/bin/python3.12)
 cd backend && /opt/homebrew/bin/python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
-alembic upgrade head
+cp .env.example .env                # then paste the Supabase *session pooler* URL into DATABASE_URL
+alembic upgrade head                # create/upgrade tables (RLS on every table)
 python -m app.loader.run            # one-time load (idempotent for the clean layer)  [Phase 2]
 uvicorn app.main:app --reload       # http://localhost:8000/docs
-pytest                              # all tests
+pytest                              # all tests (never touches the real DB; see tests/conftest.py)
 ruff check . && ruff format --check .
 
-# Frontend  [Phase 1]
-cd frontend && npm install && npm run dev    # http://localhost:5173
-npm run build && npm run lint
+# Frontend (Node >= 22.12)
+cd frontend && npm install
+cp .env.example .env.local          # VITE_API_BASE_URL=http://localhost:8000/api/v1
+npm run dev                         # http://localhost:5173
+npm run build && npm run lint && npm run format:check
 
 # Raw data integrity (any time)
 shasum -a 256 -c data/raw_checksums.sha256
 ```
+
+## Deploy
+- API: Render Blueprint from `render.yaml` (root `backend`, health check `/api/v1/health`). Secrets: `DATABASE_URL`, `CORS_ORIGINS`.
+- Web: Vercel, root `frontend`, env `VITE_API_BASE_URL=<render url>/api/v1`. `frontend/vercel.json` rewrites deep links to index.html.
+- Migrations run from a laptop (`alembic upgrade head`), not on deploy.
 
 ## Live-change playbook (BUILD_PROMPT §17)
 | Likely request | Where to change |

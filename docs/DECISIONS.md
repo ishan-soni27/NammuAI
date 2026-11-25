@@ -12,12 +12,21 @@ Ishan owns every decision; "Claude proposed, Ishan approved" means the idea came
 ## ADR-001 Stack: FastAPI + React + Supabase
 **Decision:** Python 3.12 / FastAPI / SQLAlchemy 2 / Alembic backend, React 18 + Vite + **TypeScript (strict)** frontend,
 Supabase Postgres. Typed end to end, with OpenAPI docs at `/docs`. **Decided by:** Ishan (stack). TypeScript confirmed by Ishan in Phase 0 (2026-11-25).
+**Versions (Phase 1, 2026-11-25; all pinned exactly):** Python 3.12.12, FastAPI 0.165, SQLAlchemy 2.1, Alembic 1.20,
+psycopg 3.3, Pydantic 2.14. React **18.3.1**, as the spec says, even though 19 is current: the spec asked for 18 and
+nothing we need requires 19. **TypeScript 5.9.3, not 7.0**: typescript-eslint 8.74 supports TS below 6.1 only. Vite 8,
+Tailwind CSS 4 (tokens live in CSS `@theme`, so there is no JS config), TanStack Query 5, React Router 7 in declarative mode.
+Tests use **httpx2**, because Starlette 1.x's TestClient deprecates plain httpx.
 Context / Alternatives / Tradeoffs / Revisit when: _to be written (BUILD_PROMPT §8.1)._
 
 ## ADR-002 Hosting: Render (API) + Vercel (web) + Supabase (DB)
 **Decision:** Long-running uvicorn on Render's free tier, static Vite build on Vercel, managed Postgres on Supabase.
 Cold starts are mitigated by a keep-warm ping and a "waking up" UI state. The all-on-Vercel serverless option was rejected.
-**Decided by:** Claude proposed, Ishan approved. _Full write-up to come (§8.1, §15)._
+**Decided by:** Claude proposed, Ishan approved. The Render service is defined in `render.yaml` (a Blueprint) rather than
+configured by hand, so the settings live in the repo. Migrations run from a laptop, not on deploy: Render's free tier has
+no pre-deploy hook, and running them in the build step would migrate on every push. `/health` always returns 200 and
+*reports* database trouble, so Render's health check never restarts a healthy API while Supabase wakes up.
+_Full write-up to come (§8.1, §15)._
 
 ## ADR-003 Raw JSONB layer + clean tables + data_issues
 **Decision:** Every CSV row is stored verbatim in `raw_rows` (JSONB), clean tables point back via `raw_row_id`, and
