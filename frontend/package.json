@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Dana's Monday ordering screen for Kestrel Bay Seafood (React + Vite + TypeScript).",
   "engines": {
-    "node": ">=22.12"
+    "node": "22.x"
   },
   "scripts": {
     "dev": "vite",

@@ -249,3 +249,20 @@ DATABASE_URL as Sensitive.
 **Decisions made (and by whom):** Claude advised; Ishan to set.
 **AI mistakes caught or corrected:** None.
 **Follow-ups:** Redeploy, then Claude smoke-tests.
+
+## #12 | 2026-11-25 13:46 UTC | Vercel build warnings → live smoke test passes; Phase 1 done
+**Prompt (simplified):** Pasted two Vercel build warnings: npm "Unknown env config cache-dir", and engines ">=22.12" auto-upgrading Node majors.
+**What changed:** `frontend/package.json` engines `>=22.12` → `22.x` (and the lockfile), so Vercel can't silently move
+to a new Node major. The cache-dir warning comes from Vercel's build image (no .npmrc in the repo), so no action.
+**Impact:** Live smoke test of https://nammu-ai.vercel.app (one project, two services):
+- `/` → 200 HTML; `/items/SHR-1620` → 200 HTML (deep-link fallback works);
+- `/api/v1/health` → `{"status":"ok","db":"ok","schema_ready":true,"as_of":"2026-11-16","version":"3b6e32c"}`;
+- `/api/v1/does-not-exist` → our 404 envelope, which proves /api/* reaches FastAPI with the path intact;
+- `x-vercel-id` shows iad1::iad1 (the function runs next to Supabase); the X-Request-ID echo and HEAD both work.
+
+Health takes about 1.0–1.3 s per call from here (TLS + DB round trips). It'll be measured server-side in Phase 4.
+**Phase 1 is complete.** The walking skeleton runs on browser → Vercel (web + API) → Supabase.
+**Decisions made (and by whom):** Claude: pin Node 22.x, matching the local Node 22.14.
+**AI mistakes caught or corrected:** `>=22.12` in Phase 1 was an open-ended engines range. Caught by Vercel's warning.
+**Follow-ups:** Ishan: glance at the page ("Everything is connected"), and check Settings → Cron Jobs shows the daily
+/api/v1/health job. Next: Phase 2 (loader) plan, waiting for "go".
