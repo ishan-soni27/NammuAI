@@ -88,6 +88,53 @@ class BusinessRules:
         "Threshold is assumption A14.",
     )
 
+    # ---- How BlueTide marks things (labels from the call; used by the loader) ------------
+    # Not numbers, but business facts all the same: kept here so no code or prefix is
+    # hard-coded in logic (invariant #4) and each one has a source.
+    legacy_code_prefix: str = _rule(
+        "ZZ-",
+        doc="Item codes starting with this are old-system leftovers: never ordered, any "
+        "stock is a write-off.",
+        source="Dana 00:04:40: 'Anything starting with ZZ is from the old system.' (T05)",
+    )
+    fresh_code_prefix: str = _rule(
+        "FR-",
+        doc="Item codes starting with this are fresh fish from the day boats: out of scope.",
+        source="Dana 00:00:00: fresh is 'a separate thing ... I don't need help with it.' (T07)",
+    )
+    fresh_storage_value: str = _rule(
+        "FRESH",
+        doc="Items whose storage column says this are fresh: out of scope.",
+        source="items.csv storage column (T07)",
+    )
+    discontinued_status_values: tuple[str, ...] = _rule(
+        ("disc", "discontinued"),
+        doc="Item status values (any capitalisation) that mean discontinued. A BLANK status "
+        "does NOT mean discontinued.",
+        source="T04: LOB-MEAT and PAN-PORT4 have blank status and are actively selling.",
+    )
+    active_status_values: tuple[str, ...] = _rule(
+        ("active", "a"),
+        doc="Item status values (any capitalisation) that mean active.",
+        source="T04: items.csv uses 'Active', 'A' and 'active'.",
+    )
+    credit_order_prefix: str = _rule(
+        "CM-",
+        doc="Sales order numbers starting with this are credits (returns), not demand.",
+        source="Marco 00:06:50: returns are entered by accounting as a credit. (T18)",
+    )
+    internal_customer_type: str = _rule(
+        "INTERNAL",
+        doc="Sales to customers of this type are building-to-building transfers, not demand.",
+        source="Marco 00:06:50: transfers are entered as a sale to 'TRANSFER - PVD'. Matched by "
+        "customer type, not name. (T16, ADR-014)",
+    )
+    adjustment_lot_prefix: str = _rule(
+        "ADJ-",
+        doc="On-hand lines with this lot prefix are stock adjustments, netted into sellable stock.",
+        source="T13: ADJ-2211, ADJ-7360, ADJ-1069 (assumption A07).",
+    )
+
     # ---- Item lifecycle (§6.4) ---------------------------------------------------------
     dormant_no_sales_days: int = _rule(
         60,
