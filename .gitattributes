@@ -1,0 +1,5 @@
+# The BlueTide exports use CRLF line endings and must stay byte-identical to what
+# Kestrel Bay sent (BUILD_PROMPT invariant #12: never modify the raw data).
+# "-text" tells git never to normalize their line endings on commit or checkout.
+data/raw/*.csv        -text
+kestrel-bay/**/*.csv  -text
