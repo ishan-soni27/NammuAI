@@ -490,3 +490,12 @@ from the per-item cushion, not double counting.
 - **Claude's smoke-test script used `path` as a loop variable.** In zsh that overwrites PATH, so curl "wasn't found".
 - The live test showed PO dates labelled "Set by Dana" even when someone else set them. Now "Set by <who>".
 **Follow-ups:** Phase 5 (the screens) is waiting for "go". The two smoke-test audit rows stay in the log as an honest record.
+
+## #20 | 2026-11-26 06:17 UTC | "claude doctor"
+**Prompt (simplified):** Ishan typed `claude doctor`, the Claude Code CLI's health check for its own installation.
+**What changed:** Nothing in the repo. This log entry only.
+**Impact:** None on the project. It's a Claude Code command, not part of the app. Claude didn't run it itself because it
+opens an interactive screen. Claude pointed Ishan to `/doctor` (or `! claude doctor`) to run it in this session.
+**Decisions made (and by whom):** None.
+**AI mistakes caught or corrected:** None.
+**Follow-ups:** Phase 5 (the screens) is still waiting for "go".
