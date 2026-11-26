@@ -51,7 +51,10 @@ backend/app/services/        planning_inputs (DB → engine inputs, cached per l
 backend/app/api/v1/          routers: health, items (dashboard/drill-down/handled/settings), suppliers (vendors, PO dates),
                              activity (data notes, audit, events, load runs, settings); schemas.py; docs at /api/v1/docs
 backend/tests/               unit/ (per trap), golden/ (real data, G01–G17), api/
-frontend/src/                api/ pages/ components/ lib/ styles/
+frontend/src/                api/ (client, types mirroring schemas.py, queries.ts = one hook per endpoint + edits)
+                             pages/ (Monday, Item, LeadTimes, DataNotes, Activity), components/ (OrderCard, RunwayBar,
+                             ProjectionChart, StuckList, SetPoDate, MarkHandledDialog, Term = hover glossary, ...),
+                             lib/ (dates, format, names, actor, reportError), styles/ (§9.1 tokens)
 scripts/                     profile_data.py (independent fact check), compare_answer_key.py (engine vs §7), set_database_password.py
 ```
 

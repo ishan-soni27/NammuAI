@@ -303,3 +303,37 @@ the live smoke test.
 
 **Revisit when.** A CI Postgres service is available: run the same suite against it via `DATABASE_URL_TEST`.
 
+
+## ADR-024 Screens v1: what the frontend decides on its own, and how it's checked
+**Date:** 2026-11-26 · **Decided by:** Claude (Phase 5), flagged to Ishan
+
+**Context.** Phase 5 turns the API into the screens in BUILD_PROMPT §9. A few display choices aren't spelled out in the
+spec, and a non-technical reader will notice each of them.
+
+**Decision.**
+- **The chart never shows negative stock.** The engine's day-by-day balance goes below zero once demand can't be met;
+  that's how it measures the shortage. Stock on a shelf can't be negative, so the item chart stops at zero and shades
+  those days "Out of stock". The shortage itself is in the "Why" steps and on the Monday card. Below half a unit counts
+  as out (display only).
+- **Item names are shown in sentence case** (BlueTide's are all caps). Words with a digit or "&" and words with no
+  vowels keep their letters (21/25, P&D, IQF); "8OZ" becomes "8 oz". The item code is always shown next to the name.
+- **Busy seasons on the chart come from `business_rules.season_markers`** (Christmas, Lent 2027), served with the item.
+  The frontend has no dates of its own. Display only: seasonality in the numbers comes from the monthly indices.
+- **Lead times are edited in weeks**, stored in days (weeks × 7, rounded). The 1–365-day limit is enforced by the API.
+- **The item page loads on demand.** Recharts is about 450 KB, so the Monday screen ships without it (283 KB).
+- **Glossary bubbles ignore the mouse** (`pointer-events: none`). Otherwise the "on hold" bubble opened over the
+  "Set real date" button just above it and swallowed the click (caught by the browser click-through).
+- **Stuck lots carry the location name** ("Harbor Cold Storage", "New Bedford"), not the code.
+
+**How it's checked.** Besides `npm run build` / `lint` / `format:check`, every page is rendered in headless Chrome
+(puppeteer-core driving the installed Chrome, run from a scratch folder, not a project dependency) at 1280 px and 375 px:
+no console errors, no page errors, no horizontal scroll. A scripted click-through makes every edit through the UI
+against a throwaway SQLite copy of the real data (the ADR-023 path): mark handled (with quantity and date) and clear,
+set a late PO's date from the Monday screen and clear it on the item page, change a lead time in weeks and back, open
+the data notes, and check the Activity log lists each change.
+
+**Alternatives.** Plot the raw negative balance (confusing: "-600 cs"); hard-code season dates in the frontend
+(a second source of business dates); a UI component library (more weight for a handful of dialogs and toasts).
+
+**Revisit when.** Dana asks to see the shortfall on the chart itself (e.g. a "short by" line below zero), or the
+browser checks move into CI.
