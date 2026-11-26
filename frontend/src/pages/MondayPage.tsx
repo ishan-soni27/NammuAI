@@ -31,6 +31,10 @@ function itemLink(code: string, description: string) {
   );
 }
 
+// Item cards: one column on phones, two side by side from 640 px; an opened card spans the row and
+// the next cards fill in around it (grid-flow-dense).
+const GRID = "grid grid-flow-dense grid-cols-1 gap-3 sm:grid-cols-2";
+
 const TONE = {
   red: "border-red bg-red-tint text-red",
   yellow: "border-yellow bg-yellow-tint text-ink",
@@ -164,15 +168,17 @@ function Monday({ data }: { data: Dashboard }) {
             </h2>
             <RunwayLegend />
           </div>
-          <div className="divide-y divide-rope overflow-hidden rounded-lg border border-rope bg-hull">
-            {data.order_items.length === 0 ? (
-              <p className="px-4 py-3">Nothing needs ordering right now.</p>
-            ) : (
-              data.order_items.map((card) => (
+          {data.order_items.length === 0 ? (
+            <p className="rounded-lg border border-rope bg-hull px-4 py-3">
+              Nothing needs ordering right now.
+            </p>
+          ) : (
+            <div className={GRID}>
+              {data.order_items.map((card) => (
                 <OrderRow key={card.item_code} card={card} asOf={data.as_of} />
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
 
           <Disclosure title={`Handled (${data.handled_items.length})`}>
             {data.handled_items.length === 0 ? (
@@ -181,7 +187,7 @@ function Monday({ data }: { data: Dashboard }) {
                 ordered it.
               </p>
             ) : (
-              <div className="-mx-4 -my-3 divide-y divide-rope">
+              <div className={GRID}>
                 {data.handled_items.map((card) => (
                   <OrderRow key={card.item_code} card={card} asOf={data.as_of} />
                 ))}
@@ -194,7 +200,7 @@ function Monday({ data }: { data: Dashboard }) {
           </Disclosure>
 
           <Disclosure title={`Everything else looks fine (${data.fine_items.length} items)`}>
-            <div className="-mx-4 -my-3 divide-y divide-rope">
+            <div className={GRID}>
               {data.fine_items.map((card) => (
                 <OrderRow key={card.item_code} card={card} asOf={data.as_of} />
               ))}

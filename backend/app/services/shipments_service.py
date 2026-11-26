@@ -67,7 +67,17 @@ def create_customer(db: Session, rules: BusinessRules, body: s.CustomerCreateIn)
             "internal_customer",
             "Our own buildings aren't customers. Use Move stock to send stock between them.",
         )
-    taken = set(all_customers(db))
+    existing = all_customers(db)
+    taken = set(existing)
+    same_name = next(
+        (c for c, (n, _) in existing.items() if n.strip().lower() == body.name.strip().lower()), None
+    )
+    if same_name is not None:
+        raise AppError(
+            409,
+            "customer_exists",
+            f"There's already a customer called {body.name.strip()} (code {same_name}).",
+        )
     code = canonical_code(body.customer_code) if body.customer_code and body.customer_code.strip() else ""
     if not code:
         base = "".join(w[0] for w in body.name.split() if w[:1].isalnum()).upper()[:4] or "CUST"

@@ -2,6 +2,7 @@
  * A word with a plain-English explanation on hover or keyboard focus (BUILD_PROMPT §9.3), e.g.
  * "to arrive", "cushion", "promised to customers". Tap on a phone also focuses it.
  * The definitions live in one place (GLOSSARY) so every page says the same thing.
+ * Only the word's own hover or keyboard focus opens its bubble (named group "term", see below).
  * The bubble ignores the mouse (pointer-events-none): otherwise it can open over a button above the
  * word and swallow the click (found in the Phase 5 click-through: "Set real date" under "on hold").
  */
@@ -27,7 +28,9 @@ interface TermProps {
 export function Term({ explain, children }: TermProps) {
   const id = useId();
   return (
-    <span className="group relative inline-block">
+    // A NAMED group ("term"): a plain "group" would also match the dropdown row around it (<details
+    // className="group">), so opening or hovering a row showed every bubble inside it (Ishan, 2026-11-26).
+    <span className="group/term relative inline-block">
       <span
         tabIndex={0}
         aria-describedby={id}
@@ -38,7 +41,7 @@ export function Term({ explain, children }: TermProps) {
       <span
         id={id}
         role="tooltip"
-        className="pointer-events-none absolute bottom-full left-0 z-20 mb-1 hidden w-64 max-w-[calc(100vw-2rem)] rounded-md bg-ink px-3 py-2 text-sm font-normal text-hull shadow-md group-focus-within:block group-hover:block"
+        className="pointer-events-none absolute bottom-full left-0 z-20 mb-1 hidden w-64 max-w-[calc(100vw-2rem)] rounded-md bg-ink px-3 py-2 text-sm font-normal text-hull shadow-md group-focus-within/term:block group-hover/term:block"
       >
         {GLOSSARY[explain]}
       </span>

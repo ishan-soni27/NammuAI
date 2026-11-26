@@ -1,8 +1,9 @@
 /**
- * One item in "What to order" (and in Handled / Fine), as a dropdown row (Ishan, 2026-11-26: "I
- * shouldn't have to scroll for each item"). Closed, it shows the name, one key date, the runway bar
- * and the status. Open, it shows how much to order and from whom, the shortfall, the late-PO note,
- * stock on hold, Dana's handled note, and the buttons. The item page has the full "why".
+ * One item in "What to order" (and in Handled / Fine), as a card in a grid (Ishan, 2026-11-26: "I
+ * want the Items in What to Order to be in grid layout"). Closed, it shows the status, the name, one
+ * key date, the runway bar and how much to order. Clicking it opens it across the full row with how
+ * much to order and from whom, the shortfall, the late-PO note, stock on hold, Dana's handled note,
+ * and the buttons. The item page has the full "why".
  * Native <details>, so it opens with the keyboard and screen readers for free.
  * Fed by: ItemCard from GET /dashboard.
  */
@@ -58,36 +59,63 @@ function orderSentence(card: ItemCard, asOf: string): string {
     : "Ordering more today won't close the gap.";
 }
 
+// The card's left edge in its traffic-light colour (always with the chip's words too).
+const ACCENT: Record<ItemCard["status"] | "HANDLED", string> = {
+  TOO_LATE: "border-l-red",
+  ORDER_THIS_WEEK: "border-l-yellow",
+  ORDER_SOON: "border-l-yellow",
+  OK: "border-l-green",
+  NO_RECENT_SALES: "border-l-grey",
+  NOT_PLANNED: "border-l-grey",
+  HANDLED: "border-l-grey",
+};
+
+/** The one line about ordering on the closed card. */
+function orderShort(card: ItemCard): string {
+  if (card.order_at_least > 0) return `Order at least ${qty(card.order_at_least, card.sell_uom)}`;
+  return card.status === "TOO_LATE"
+    ? "Ordering more won't close the gap"
+    : "Nothing to order today";
+}
+
 export function OrderRow({ card, asOf }: { card: ItemCard; asOf: string }) {
   const [handling, setHandling] = useState(false);
   const uom = card.sell_uom;
   const itemLink = `/items/${encodeURIComponent(card.item_code)}`;
+  const status = card.handled_note ? "HANDLED" : card.status;
 
+  // A card in the grid. Opened, it spans the full row (open:col-span-full) and the cards after it
+  // fill the gap (grid-flow-dense on the grid).
   return (
-    <details className="group">
-      <summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3 hover:bg-ice sm:grid-cols-[auto_minmax(0,19rem)_minmax(0,1fr)_auto]">
-        <span
-          aria-hidden="true"
-          className="text-lg leading-none text-fog transition-transform group-open:rotate-90"
-        >
-          ›
+    <details
+      className={`group rounded-lg border border-l-4 border-rope bg-hull open:col-span-full ${ACCENT[status]}`}
+    >
+      <summary className="block cursor-pointer list-none rounded-lg p-4 hover:bg-ice">
+        <span className="flex items-start justify-between gap-2">
+          <StatusChip status={status} />
+          <span className="whitespace-nowrap pt-0.5 text-sm text-fog">{card.item_code}</span>
         </span>
-        <span className="min-w-0">
-          <span className="block font-semibold">
-            {itemName(card.description)}{" "}
-            <span className="whitespace-nowrap text-sm font-normal text-fog">{card.item_code}</span>
-          </span>
-          <span className="block text-sm text-fog">{keyDate(card, asOf)}</span>
-        </span>
-        <span className="col-span-full col-start-2 row-start-2 sm:col-span-1 sm:col-start-3 sm:row-start-1">
+        <span className="mt-2 block font-semibold leading-snug">{itemName(card.description)}</span>
+        <span className="block text-sm text-fog">{keyDate(card, asOf)}</span>
+        <span className="mt-3 block">
           <RunwayBar card={card} compact />
         </span>
-        <span className="col-start-3 row-start-1 justify-self-end sm:col-start-4">
-          <StatusChip status={card.handled_note ? "HANDLED" : card.status} />
+        <span className="mt-3 flex items-center justify-between gap-2 text-sm">
+          <span className="font-semibold">{orderShort(card)}</span>
+          <span className="whitespace-nowrap text-fog">
+            <span className="group-open:hidden">Details</span>
+            <span className="hidden group-open:inline">Close</span>{" "}
+            <span
+              aria-hidden="true"
+              className="inline-block transition-transform group-open:rotate-90"
+            >
+              ›
+            </span>
+          </span>
         </span>
       </summary>
 
-      <div className="space-y-2 px-4 pb-4 pl-11">
+      <div className="space-y-2 border-t border-rope px-4 pb-4 pt-3">
         <p>{whenSentence(card, asOf)}</p>
         <p>
           <span className="font-semibold">{orderSentence(card, asOf)}</span> {card.vendor_name}

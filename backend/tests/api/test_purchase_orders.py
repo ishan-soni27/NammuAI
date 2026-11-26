@@ -277,3 +277,12 @@ def test_locations_say_which_buildings_can_receive(api: TestClient) -> None:
     locs = {x["code"]: x for x in api.get(f"{V}/locations").json()}
     assert locs["NB"]["can_receive"] and locs["QA-HOLD"]["can_receive"] and not locs["DAMAGED"]["can_receive"]
     assert locs["HCS"]["is_third_party_storage"]
+
+
+def test_a_supplier_with_the_same_name_is_refused(api: TestClient) -> None:
+    body = {"name": "Gloucester Fillet Co.", "lead_time_days": 21, "cushion_days": 7}
+    assert api.post(f"{V}/vendors", json=body).status_code == 201
+    again = api.post(f"{V}/vendors", json={**body, "name": "gloucester fillet co. "})
+    assert again.status_code == 409 and "already a supplier called" in again.json()["error"]["message"]
+    bluetide = api.post(f"{V}/vendors", json={**body, "name": "Bien Xanh Export Co."})
+    assert bluetide.status_code == 409

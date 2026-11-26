@@ -642,6 +642,20 @@ def _check_days(value: int, label: str, rules: BusinessRules) -> None:
 
 def create_vendor(db: Session, rules: BusinessRules, body: s.VendorCreateIn) -> str:
     taken = _vendor_codes(db)
+    name = body.name.strip()
+    same_name = next(
+        (
+            code
+            for code, existing in [
+                *db.execute(select(m.Vendor.vendor_code, m.Vendor.name)).all(),
+                *db.execute(select(m.AppVendor.vendor_code, m.AppVendor.name)).all(),
+            ]
+            if existing.strip().lower() == name.lower()
+        ),
+        None,
+    )
+    if same_name is not None:
+        raise AppError(409, "vendor_exists", f"There's already a supplier called {name} (code {same_name}).")
     code = (
         canonical_code(body.vendor_code)
         if body.vendor_code and body.vendor_code.strip()

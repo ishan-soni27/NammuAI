@@ -255,3 +255,8 @@ def test_stock_changes_list_says_what_can_be_undone(api: TestClient) -> None:
     api.post(f"{V}/stock-movements/{kinds['move_out']['id']}/undo", json={})
     after = api.get(f"{V}/stock-movements", params={"item": "SAL-POR6"}).json()
     assert all(not c["can_undo"] for c in after) and sum(c["is_undo"] for c in after) == 2
+
+
+def test_a_customer_with_the_same_name_is_refused(api: TestClient) -> None:
+    r = api.post(f"{V}/customers", json={"name": "Seabright Markets", "customer_type": "GROCERY"})
+    assert r.status_code == 409 and "already a customer called" in r.json()["error"]["message"]
