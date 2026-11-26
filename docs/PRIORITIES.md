@@ -17,7 +17,11 @@ The working copy of BUILD_PROMPT §11 (P0 / P1 / P2), kept up to date as Ishan a
 | 6 | "I've handled this" with optional qty and arrival date | 3 (engine), 4, 5 | Done (dialog; note, age, "BlueTide now shows" hint, clear) |
 | 7 | Tell it what it knows: editable lead times, cushion, PO arrival dates | 4, 5 | Done (Lead times page in weeks; "Set real date" on Monday and item page; item cushion) |
 | 8 | Log everything (4 layers) + Data notes and Activity pages | 4, 5 | Done (browser errors reported too) |
-| 9 | Ship it: live deploy, loader, tests, README, DECISIONS, ASSUMPTIONS, DEMO_SCRIPT | 1–6 | Deploy live; README, DEMO_SCRIPT and final docs in Phase 6 |
+| 9 | Ship it: live deploy, loader, tests, README, DECISIONS, ASSUMPTIONS, DEMO_SCRIPT | 1–7 | Deploy live; README, DEMO_SCRIPT and final docs in Phase 7 |
+| 10 | **Log POs and track them to received** (Ishan, 2026-11-26): new PO, shipped, received (lot, expiry, building), cancelled; counts as on the way, then as stock | 6 | Planned, waiting for "go" |
+| 11 | **Log outgoing shipments** (Ishan, 2026-11-26): customer orders out; promised, then shipped (lots picked) | 6 | Planned, waiting for "go" |
+| 12 | **Upload new BlueTide files from the website** (Ishan, 2026-11-26): dry run, then load; never touches Dana's records | 6 | Planned, waiting for "go" |
+| 13 | **Download to Excel (CSV)** (Ishan, 2026-11-26): order list, stuck list, POs, shipments | 6 | Planned, waiting for "go" |
 
 ## P1: after P0, in this order
 
@@ -40,8 +44,10 @@ The working copy of BUILD_PROMPT §11 (P0 / P1 / P2), kept up to date as Ishan a
   Natural home: an endpoint that hands the engine's explain-steps and drill-down data to a Claude model. Not started.
 - Fresh and day-boat ordering. Dana: separate, daily, doesn't need help.
 - Marco's features (availability and price, routes, emails). "Dana first."
-- Live BlueTide integration / nightly ETL. Loading once is fine for the assignment.
-- Creating or sending POs. BlueTide stays the system of record.
+- ~~Live BlueTide integration / nightly ETL~~: moved to P0 #12 as uploads from the website (Ishan, 2026-11-26).
+  A direct BlueTide connection is still out of scope.
+- ~~Creating POs~~: moved to P0 #10 (Ishan, 2026-11-26: the app becomes the main record). *Sending* POs to
+  suppliers (email, EDI) is still out of scope.
 - Transfer suggestions between buildings. No capacity or pallet data yet.
 - Statistical / ML forecasting. One year of data; explainability matters more.
 - User accounts and roles. Single user, fictional data.

@@ -337,3 +337,42 @@ the data notes, and check the Activity log lists each change.
 
 **Revisit when.** Dana asks to see the shortfall on the chart itself (e.g. a "short by" line below zero), or the
 browser checks move into CI.
+
+## ADR-025 Traffic-light colours and dropdown rows on the Monday screen
+**Date:** 2026-11-26 · **Decided by:** Ishan (colours chosen from two options Claude offered)
+
+**Context.** Ishan's review of the first screens: "what is cs? what do the bars represent? what do the colours
+represent? why do I have to scroll so far ... Dana will not use the website if it is cluttered." BUILD_PROMPT §9.1's
+signal-flag palette (brown for "order this week", blue for "order soon", a different hue per stuck tag) read as random.
+
+**Decision.**
+- Red, yellow and green only, always with an icon and words: red = too late; yellow = order this week (solid) and order
+  soon (light); green = fine; grey = handled / no recent sales / not planned. Stuck tags: expired and inside the
+  six-month line red; stopped selling, long at Harbor and overstock yellow. Links and focus rings are ink, not blue.
+- Every item on Monday (order list, handled, fine, stuck list) is a native `<details>` row. Closed: name, code, one key
+  date, the runway bar and the status. Open: the order sentence, supplier terms, shortfall, late-PO note, on-hold stock,
+  handled note and buttons. A one-line legend explains the bar.
+- The summary is the headline sentence plus count tiles; the "not counted" detail folds away.
+- Units are spelled out: "cases" (BlueTide's CS) and "lb", in the API's sentences too (`explain.unit_word`).
+- An order-by date already past says "Order now (was due Fri Nov 13)".
+
+**Result.** Monday with everything closed: 1,618 px tall at 1280 px (was 4,533), 3,687 px at 375 px (was 8,601).
+
+**Supersedes.** BUILD_PROMPT §9.1's status and tag colours; ADR-024 is otherwise unchanged.
+
+## ADR-026 Direction: the app becomes the main record for POs and shipments
+**Date:** 2026-11-26 · **Decided by:** Ishan · **Status:** direction decided; the design (Phase 6) is waiting for "go"
+
+**Context.** Ishan: "This is an ERP system ... It is supposed to be a system that Dana can use for the future as well.
+She needs to be able to log and track stuff." The build so far only analyses one load of BlueTide exports, because
+BUILD_PROMPT §11 listed creating POs and live loading as P2.
+
+**Decision (Ishan's answers, 2026-11-26).** Build all four: log POs and track them to received; log outgoing shipments;
+upload new BlueTide files from the website; download lists to CSV. On how the app relates to BlueTide: "This would be
+the system to eventually replace BlueTide, therefore it should be able to do both, add on top of BlueTide AND replace
+BlueTide for these ... the design should lean towards replacing BlueTide. The app will become the main record for them."
+
+**Consequences.** New app-owned tables that the loader never touches (invariant 5) and that hold no foreign keys into
+the BlueTide tables (the loader TRUNCATEs those). Where both have the same PO or order number, the app's record wins and
+the difference is flagged. Business "today" has to move forward with new data (a decision for Ishan in the Phase 6
+plan). The Harbor storage calculator (P1 #1) and the README / demo phase move after this work.

@@ -599,3 +599,52 @@ checks to run.
 **Decisions made (and by whom):** None.
 **AI mistakes caught or corrected:** None.
 **Follow-ups:** Phase 6 is waiting for "go".
+
+## #24 | 2026-11-26 11:05 UTC | "What is cs? What do the bars and colours mean? Too cluttered. Where is the logging?"
+**Prompt (simplified):** What is "cs", and what do the bars and colours mean? There's too much scrolling and clutter.
+Make each item a dropdown with the name and bar visible, and use red, yellow and green, not blue. This is an ERP
+system: Dana must be able to log and track her future imports and exports, not just analyse old files.
+**What changed:**
+- Ishan answered three questions:
+  - colours red / yellow / yellow / green;
+  - build all four logging features (POs to received, outgoing shipments, BlueTide uploads, CSV downloads);
+  - the app becomes the main record and should eventually replace BlueTide.
+- **Redesign (done, live):**
+  - `OrderRow` dropdown rows replace the order cards;
+  - stuck list rows are dropdowns too;
+  - traffic-light tokens; no blue anywhere;
+  - count tiles plus a fold-away "not counted" line;
+  - a legend for the bar;
+  - "cases" spelled out in the frontend and in the API's sentences (`explain.unit_word`);
+  - "Order now (was due ...)" for past order-by dates;
+  - the chart's unit moved into its title.
+- Docs:
+  - ADR-025 (colours and rows) and ADR-026 (the app becomes the main record);
+  - CLAUDE.md, Ishan's decisions;
+  - PRIORITIES: P0 #10–#13 added, and P2 "creating POs" and "live loading" moved up.
+- `docs/screenshots/redesign/` (not committed).
+**Impact:**
+- **The Monday page is much shorter with everything closed:**
+  - 1,618 px tall at 1280 px wide, down from 4,533;
+  - 3,687 px at 375 px wide, down from 8,601.
+- **Checks:**
+  - 201 backend tests pass;
+  - ruff, build, lint and format are clean;
+  - every page loads without errors and without sideways scrolling at 1280 px and 375 px, locally and live;
+  - the click-through passes locally (all edits) and live (handled note and PO date, labelled
+    "Claude (live click-through)" and reverted).
+- Live data is back to 0 handled and 3 late POs.
+**Decisions made (and by whom):**
+- Ishan: the colour mapping, the four features, and that the app becomes the main record.
+- Claude: order soon is a lighter yellow than order this week; stuck tags red for expired and six-month line,
+  yellow for the rest.
+**AI mistakes caught or corrected:**
+- **Claude built only what the spec scoped (analysis of one load) and didn't flag the ERP gap.** Ishan's expectation
+  that Dana can log future work was reasonable for "a system she can use". Claude should have raised it at the
+  Phase 5 plan.
+- The first redesign cut long names off with "…" on desktop. Fixed.
+- A past order-by date showed as "Order by Fri Nov 13". It now says "Order now".
+- The `git rm` of the old card component needed `-f` because the colour rename had touched it. That's the only file
+  removed, and it was replaced by `OrderRow.tsx`.
+**Follow-ups:** The Phase 6 plan (logging and tracking) is posted and waiting for "go" plus two decisions: how
+business "today" moves, and the order of the steps.

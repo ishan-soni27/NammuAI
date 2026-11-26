@@ -124,5 +124,13 @@ Each row should be a small, tested change. If one isn't, refactor it in Phase 6.
   per pallet; $30/pallet/month; save to a table; CSV export). A chat assistant is P2 (later).
 - **Open orders are counted once** (Ishan 2026-11-26, A23): deducted on their ship date, NOT added to the selling rate
   (`open_orders_in_selling_rate = False`; BUILD_PROMPT §6.2 said both). Holiday caution comes from seasonality + cushion.
+- **Screens (Ishan, 2026-11-26, ADR-025):** traffic lights only. Red = too late (and expired / inside the six-month
+  line); yellow = order this week / order soon (and stopped selling, long at Harbor, overstock); green = fine; grey =
+  handled. No blue. Each item on Monday is a dropdown row (name, key date, bar, status; details on click). Units are
+  spelled out ("cases", not "cs").
+- **The app is becoming the system of record (Ishan, 2026-11-26, ADR-026):** it should eventually replace BlueTide.
+  Dana must be able to log and track her own work: POs (through to received), outgoing shipments, uploads of new
+  BlueTide files, and CSV downloads. Where BlueTide and the app both have a record, the app's is the main one.
+  BUILD_PROMPT §11 listed "creating POs" and "live BlueTide loading" as P2; this overrides it. Phase 6 plan pending "go".
 - **One Vercel project hosts both the website and the API** (Vercel Services), not Render + Vercel (2026-11-25, ADR-002).
   BUILD_PROMPT §8.1/§15 still say Render; this overrides it.
