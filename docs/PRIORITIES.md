@@ -27,8 +27,8 @@ The working copy of BUILD_PROMPT §11 (P0 / P1 / P2), kept up to date as Ishan a
 
 | # | Item | Why it's not P0 |
 |---|---|---|
-| 1 | **Harbor storage cost calculator** (Ishan, 2026-11-26). A separate section: for each item at Harbor, Dana types how many cases fit on a pallet; the tool computes pallets and **$30 per pallet per month** (Dana's rate, 2026-11-26). She can save results to a table and export it as CSV. Replaces old P1 #5 ("Harbor $ per month") and includes part of old P1 #1 (CSV export) | Doesn't answer "what will run out" or "what am I stuck with"; needs Dana's cases-per-pallet input |
-| 2 | CSV export of the order and stuck lists | Helps adoption (Dana lives in Excel), but answers neither question |
+| 1 | **Harbor storage cost calculator** (Ishan, 2026-11-26). A separate section: for each item at Harbor, Dana types how many cases fit on a pallet; the tool computes pallets and **$30 per pallet per month** (Dana's rate, 2026-11-26). She can save results to a table and export it as CSV. Replaces old P1 #5 ("Harbor $ per month") and includes part of old P1 #1 (CSV export). **Done (ADR-031); live** | Doesn't answer "what will run out" or "what am I stuck with"; needs Dana's cases-per-pallet input |
+| 2 | ~~CSV export of the order and stuck lists~~ | Done as P0 #13 (ADR-030) |
 | 3 | QA-HOLD "what if it clears" toggle | The P0 default (show separately, don't count) already follows Walt's rule and Dana's Q4 |
 | 4 | Lot-level expiry-aware projection (FEFO) + "projected to expire unsold" | P0 already flags every lot inside the line with $ |
 | 5 | Stockout detector (suggest zero-sales runs for Dana to confirm) | Can't be auto-applied; Dana confirmed only the one known stockout (Q6) |

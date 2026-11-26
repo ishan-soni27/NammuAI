@@ -34,7 +34,8 @@ including tiny prompts, no-op prompts and prompts where you made a mistake. Log 
 5. **The loader never truncates app-layer tables** (`vendor_settings`, `item_settings`, `po_eta_overrides`, `handled_flags`,
    and Dana's own records since Phase 6: `app_vendors`, `app_items`, `purchase_orders`, `purchase_order_lines_app`,
    `po_line_status`, `stock_movements`, `app_customers`, `shipments`, `shipment_lines`, `uploads`, `upload_files`,
-   `stock_counts`, `stock_count_lines`, `app_sales_lines`). They never get foreign keys into BlueTide's tables
+   `stock_counts`, `stock_count_lines`, `app_sales_lines`, `harbor_storage_rows`). They never get foreign keys into
+   BlueTide's tables
    (`APP_LAYER` in models.py).
    Vendor settings seeds are inserted only if missing.
 6. Read raw CSVs as strings (`dtype=str, keep_default_na=False`). They are CRLF. Use `Decimal`/numeric for quantities and money, and `date` for business dates.
@@ -51,7 +52,8 @@ data/reference/*.csv         human-maintained seeds (pack sizes, lead times, loc
 backend/app/config/          settings.py (env), business_rules.py (ALL tunable numbers)
 backend/app/loader/          one-time CSV load: read_raw → rules (T01..T31) → normalize/classify/convert → write → report
 backend/app/planning/        PURE engine (no DB/clock/I/O): seasonality, demand, supply, projection, ordering, stuck, explain,
-                             records (Dana's records matched with BlueTide's: R1-R6 POs, R7-R10 orders/moves; ADR-027/028)
+                             records (Dana's records matched with BlueTide's: R1-R6 POs, R7-R10 orders/moves; ADR-027/028),
+                             storage (Harbor pallets and $ a month; ADR-031)
 backend/app/services/        planning_inputs (DB → engine inputs: BlueTide cached per load + Dana's records fresh),
                              records_service (POs, receipts, items, suppliers), shipments_service (orders, picks, moves,
                              customers), import_service + template_import (imports from the website), export_service
@@ -62,10 +64,12 @@ backend/app/api/v1/          routers: health, items (dashboard/drill-down/handle
                              new suppliers, PO dates), purchase_orders (list, create, ship, cancel, receive, undo, locations),
                              shipments (customers, orders, picks, ship/cancel/undo, stock lots, stock changes, moves),
                              imports (upload, check, load, templates), exports (CSV downloads for Excel),
+                             harbor (Harbor storage cost and Dana's saved table),
                              activity (data notes, audit, events, load runs, settings); schemas.py; docs at /api/v1/docs
 backend/tests/               unit/ (per trap), golden/ (real data, G01–G17), api/
 frontend/src/                api/ (client, types mirroring schemas.py, queries.ts = one hook per endpoint + edits)
-                             pages/ (Monday, Item, LeadTimes, DataNotes, Activity), components/ (OrderCard, RunwayBar,
+                             pages/ (Monday, Item, PurchaseOrders, Shipments, Items, LeadTimes = Suppliers, Harbor, Data,
+                             DataNotes, Activity), components/ (OrderRow, StatusGroup, RunwayBar, DownloadLink,
                              ProjectionChart, StuckList, SetPoDate, MarkHandledDialog, Term = hover glossary, ...),
                              lib/ (dates, format, names, actor, reportError), styles/ (§9.1 tokens)
 scripts/                     profile_data.py (independent fact check), compare_answer_key.py (engine vs §7), set_database_password.py
@@ -125,7 +129,7 @@ python3 scripts/profile_data.py
 | "Add a column to a template" or "a new template" | `services/template_import.py` (`TEMPLATES`, `_parse_row`, `load`); the Data page lists templates from the API |
 | "Change what blocks an import" | `services/import_service._check_bluetide` (blockers vs warnings) |
 | "Filter by vendor or category" | Frontend only. The dashboard already returns vendor and category |
-| "Harbor cost per month" | Add pallet rate to `locations` and cases-per-pallet to `pack_sizes.csv`, then compute in `planning/stuck.py` |
+| "Change the Harbor rate" or "how pallets are counted" | Rate: `harbor_pallet_cost_per_month` in `business_rules.py`. Pallets: `planning/storage.pallets_needed` (+ `palletsFor` preview in `HarborPage.tsx`) |
 
 Each row should be a small, tested change. If one isn't, refactor it in Phase 6.
 
@@ -139,8 +143,8 @@ Each row should be a small, tested change. If one isn't, refactor it in Phase 6.
   Harbor costs $30/pallet/month (cases per pallet still unknown).
 - **Late / unknown inventory is its own bucket** (Ishan + Dana, ADR-021): late POs and QA-HOLD are shown, never counted; status
   uses confirmed supply only; a best-case "if the late PO arrives" run flags items *covered only by a late PO*.
-- **Priorities live in `docs/PRIORITIES.md`.** P0 first. Next after P0: a Harbor storage cost calculator (Dana types cases
-  per pallet; $30/pallet/month; save to a table; CSV export). A chat assistant is P2 (later).
+- **Priorities live in `docs/PRIORITIES.md`.** P0 is done. P1 #1, the Harbor storage cost calculator (Dana types cases
+  per pallet; $30/pallet/month; save to a table; CSV export), is done (ADR-031). A chat assistant is P2 (later).
 - **Open orders are counted once** (Ishan 2026-11-26, A23): deducted on their ship date, NOT added to the selling rate
   (`open_orders_in_selling_rate = False`; BUILD_PROMPT §6.2 said both). Holiday caution comes from seasonality + cushion.
 - **Screens (Ishan, 2026-11-26, ADR-025):** traffic lights only. Red = too late (and expired / inside the six-month

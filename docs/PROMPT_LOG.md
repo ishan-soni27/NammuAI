@@ -983,3 +983,64 @@ holding its cards.
 **Follow-ups:**
 - **Phase 6 is done.** Next, when Ishan says: the Harbor storage calculator (P1 #1), then the README and demo phase.
 - Still open: Ishan to confirm the Vercel cron.
+
+## #32 | 2026-11-26 19:30 UTC | "go": P1 #1, the Harbor storage cost calculator
+**Prompt (simplified):** Start the next item, the Harbor storage calculator (Ishan's spec from prompt #17: Dana
+types how many cases fit on a pallet; $30 per pallet per month; add rows to a table; export it as CSV).
+**What changed:**
+- **Rule** (`planning/storage.py`, pure): each lot on its own pallets, a part pallet charged whole, pounds turned
+  into cases with pounds per case; no cost without her cases per pallet.
+- **Settings:** `business_rules.harbor_pallet_cost_per_month` = 30 (Dana's reply) and `cases_per_pallet_max` = 1,000
+  (a typo guard).
+- **Migration 0005** (applied to Supabase; no drift; RLS on): `item_settings.cases_per_pallet` and
+  `harbor_storage_rows`.
+- **API:**
+  - `GET /harbor-storage`;
+  - `POST /harbor-storage/rows` (what's at Harbor now, or a what-if amount; worked out on the server; all or
+    nothing; remembers her cases per pallet);
+  - `DELETE /harbor-storage/rows/{id}`;
+  - `PATCH /items/{code}/settings` accepts `cases_per_pallet`;
+  - `/exports/harbor-storage.csv`.
+  All writes are audited.
+- **Website:** a new **Harbor** page (nav). It has a summary, one row per item (cases per pallet, a live cost, Save,
+  Add to table), "Add all", "Work out another amount", and "Your table" with Remove and "Download your table for
+  Excel". The Activity page has labels for the new actions. On a phone, the box, the cost and the button share one line.
+- Docs: ADR-031, A16 updated, A47–A48, PRIORITIES (P1 #1 done; P1 #2 was done as P0 #13), CLAUDE.md (invariant 5,
+  code map, playbook).
+**Impact:**
+- **Checks:** 292 backend tests pass (5 new unit and 4 new API tests). Ruff, build, lint and format are clean.
+- **Local click-through:**
+  - typing 60 for SAL-POR6 shows $540 a month (18 pallets);
+  - Add to table; Save; Add all; a what-if (300 cases at 80 a pallet = 4 pallets, $120);
+  - the download has every row; Remove works;
+  - moving 450 cases of SAL-POR6 to New Bedford drops Harbor to 600 cases, 10 pallets, $300;
+  - no sideways scrolling at 1280 or 375 px.
+- **Live (version 50ab3ca):** the same click-through passes as "Claude (live click-through)". It removed its rows
+  and cleared the cases per pallet it typed, so Harbor shows 0 saved rows and no remembered numbers again. Monday is
+  unchanged at 3/6/5/16. What's left: three item-settings rows with every value empty (SAL-POR6, TIL-FIL, SHR-1620),
+  and their audit entries.
+- Screenshots: `docs/screenshots/p1-harbor/` (not committed).
+**Decisions made (and by whom):**
+- Ishan: "go"; the calculator's shape (prompt #17).
+- Claude:
+  - pallets are counted per lot, and a part pallet is charged whole (A47, flagged);
+  - a what-if is worked out as one lot;
+  - cases per pallet is remembered per item, including from a what-if;
+  - the rate lives in `business_rules` (not `locations.csv`), so no reload was needed;
+  - no "cost so far", because the received date isn't the date a lot reached Harbor (T30);
+  - saved rows aren't totalled, because rows from different days would double count.
+**AI mistakes caught or corrected:**
+- **Two wrong numbers in my own tests.** I added up Harbor's cases as 1,975 by hand (the real total is 2,095) and
+  called the audit endpoint `/audit` (it's `/audit-log`). The tests were fixed; the app was right.
+- **A deletion in a test script.** The click-through script I first wrote emptied its downloads folder. The safety
+  check blocked it, and it was rewritten to use a new folder per run. The older download-check script had the same
+  line and was run once more before I noticed (it only touched my own scratch downloads); it's now fixed the same way.
+- **The click helper failed on the fold-out heading,** because the heading also contains its arrow. Fixed.
+- **Edits that didn't match.** Two find-and-replace edits missed because the formatter had reshaped the code (as in
+  #30). Each edit's own check caught it, and they were redone.
+- **The first phone layout was too tall:** the button wrapped under every row. The row was tightened.
+**Follow-ups:**
+- Next, when Ishan says: the README / DEMO_SCRIPT / final docs phase.
+- Possible later: the Harbor $ a month beside each Harbor lot on Monday's stuck list; a rate per warehouse if there's
+  ever more than one.
+- Still open: Ishan to confirm the Vercel cron.

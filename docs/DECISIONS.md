@@ -527,3 +527,36 @@ stuck list, the POs, the shipments and the data notes as files.
 
 **Known limits.** CSV, not .xlsx (no formatting or several sheets). Downloads aren't recorded in the activity log
 (they change nothing; the request log has them).
+
+## ADR-031 Harbor storage cost: Dana's cases per pallet, pallets per lot, and her own saved table
+**Date:** 2026-11-26 · **Decided by:** Ishan (prompt #17: "a harbor storage costs calculator ... they can input how
+many cases fit on the pallet ... an option that adds it to a data table which they can then export later as a CSV";
+"go" after Phase 6); details by Claude
+
+**Context.** Harbor Cold Storage charges $30 per pallet per month (Dana's reply). BlueTide has no pallet data, so
+the cost of the stock sitting there was hidden (A16). Walt: "Long stock sitting at Harbor is the worst case."
+
+**Decision.**
+- **A Harbor page** (nav "Harbor"): every item with stock at a paid warehouse (`is_third_party_storage`), its cases
+  and lots, and why it's on the stuck list if it is.
+  - Dana types **cases per pallet** per item, and pallets and dollars a month show as she types.
+  - Her number is remembered in `item_settings.cases_per_pallet` (app layer, audited), by "Save" or by adding a row.
+  - An item without cases per pallet shows no cost, and the summary says how many still need it. It's never guessed.
+- **The rule** (pure, `planning/storage.py`; A47): each lot on its own pallets, a part pallet charged as a whole one,
+  pounds turned into cases with pounds per case. The rate is `business_rules.harbor_pallet_cost_per_month`.
+- **The stock is the plan's own lots**, BlueTide's count plus her receipts and moves, so moving a lot out of Harbor
+  lowers the cost at once.
+- **Her table** (`harbor_storage_rows`): "Add to table" (one item, all priced items, or a what-if amount for any item)
+  is worked out again on the server and stored exactly as calculated, rate included, so a later change never
+  rewrites it. Rows can be removed (audited), and the table downloads as `/exports/harbor-storage.csv`.
+
+**Verified.**
+- 5 unit tests for the rule.
+- 4 API tests on the real data: 14 items and 2,095 cases at Harbor; SAL-POR6 at 60 a pallet is 18 pallets, $540;
+  a what-if; validation; all-or-nothing; the download; remove.
+- A browser click-through: live cost, Add, Save, Add all, what-if, download, remove, and a move out of Harbor
+  dropping SAL-POR6 to 10 pallets, $300.
+- No sideways scrolling at 1280 or 375 px.
+
+**Known limits.** One rate for every paid warehouse (only Harbor today). No "cost so far": BlueTide's received date
+isn't the date a lot reached Harbor (T30). No cost per item on Monday's stuck list yet.
