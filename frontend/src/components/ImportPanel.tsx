@@ -1,11 +1,10 @@
 /**
- * One import in progress (Phase 6 step 3; ADR-029): upload files into slots, check (a dry run that
- * changes nothing), then load with the check's one-time code. Works the same for BlueTide's seven
- * export files and for Dana's own templates (with a "Download the template" link per slot).
+ * One weekly upload in progress (ADR-029): BlueTide's export files go into slots, then a check (a dry
+ * run that changes nothing), then a load with the check's one-time code. Slots left empty reuse the
+ * last load's file.
  * Fed by: the Import returned by every /imports call. Writes: PUT files, POST check, POST load, DELETE.
  */
 import { useState } from "react";
-import { API_BASE_URL } from "../api/client";
 import { useCheckImport, useDiscardImport, useLoadImport, usePutImportFile } from "../api/queries";
 import type { Import, ImportReport } from "../api/types";
 import { primaryButton, quietButton, secondaryButton } from "../lib/ui";
@@ -31,28 +30,6 @@ function Report({ report }: { report: ImportReport }) {
               <li key={w}>{w}</li>
             ))}
           </ul>
-        </div>
-      )}
-      {report.problems && report.problems.length > 0 && (
-        <div className="max-h-64 overflow-auto rounded-md border border-rope">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-hull text-left text-fog">
-              <tr>
-                <th className="px-2 py-1 font-semibold">File</th>
-                <th className="px-2 py-1 font-semibold">Line</th>
-                <th className="px-2 py-1 font-semibold">What to fix</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-rope">
-              {report.problems.map((p) => (
-                <tr key={`${p.slot}-${p.line}-${p.message}`}>
-                  <td className="px-2 py-1">{p.label}</td>
-                  <td className="px-2 py-1">{p.line}</td>
-                  <td className="px-2 py-1">{p.message}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       )}
       {report.changes && report.changes.length > 0 && (
@@ -95,16 +72,6 @@ function Report({ report }: { report: ImportReport }) {
           notes list each one after loading).
         </p>
       )}
-      {(report.conflicts?.length ?? 0) + (report.orphans?.length ?? 0) > 0 && (
-        <div className="rounded-md bg-yellow-tint px-3 py-2 text-sm">
-          <p className="font-semibold">What it does to your own records:</p>
-          <ul className="mt-1 list-disc space-y-1 pl-5">
-            {[...(report.conflicts ?? []), ...(report.orphans ?? [])].map((c) => (
-              <li key={c}>{c}</li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }
@@ -116,7 +83,6 @@ export function ImportPanel({ imp, onDone }: { imp: Import; onDone: () => void }
   const discard = useDiscardImport();
   const [current, setCurrent] = useState(imp);
   const files = new Map(current.files.map((f) => [f.slot, f]));
-  const bluetide = current.kind === "bluetide";
   const busy = put.isPending || check.isPending || load.isPending;
 
   if (current.status === "loaded") {
@@ -134,9 +100,7 @@ export function ImportPanel({ imp, onDone }: { imp: Import; onDone: () => void }
   return (
     <div className="space-y-4">
       <p className="text-sm text-fog">
-        {bluetide
-          ? "Choose the files BlueTide exported. Any you leave out reuse the last load's copy."
-          : "Download a template, fill it in Excel, save it as CSV, and upload it. Use only the ones you need."}
+        Choose the files BlueTide exported. Any you leave out reuse the last load's copy.
       </p>
       <ul className="divide-y divide-rope rounded-md border border-rope">
         {current.slots.map((slot) => {
@@ -151,20 +115,10 @@ export function ImportPanel({ imp, onDone }: { imp: Import; onDone: () => void }
                 <p className="text-sm text-fog">
                   {file
                     ? `${file.file_name}: ${file.rows.toLocaleString("en-US")} rows`
-                    : bluetide
-                      ? `Not chosen: the last load's ${slot.expected_name} will be used`
-                      : `Columns: ${slot.columns.join(", ")}`}
+                    : `Not chosen: the last load's ${slot.expected_name} will be used`}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                {!bluetide && (
-                  <a
-                    href={`${API_BASE_URL}/import-templates/${slot.slot}.csv`}
-                    className="text-sm font-semibold underline underline-offset-2"
-                  >
-                    Download the template
-                  </a>
-                )}
                 <label className={`${secondaryButton} cursor-pointer text-sm`}>
                   {file ? "Replace" : "Choose file"}
                   <input
@@ -229,8 +183,8 @@ export function ImportPanel({ imp, onDone }: { imp: Import; onDone: () => void }
         </button>
       </div>
       <p className="text-xs text-fog">
-        Checking changes nothing. Loading replaces the BlueTide data in one go (or adds your
-        records) and never touches the POs, orders, notes and settings you entered.
+        Checking changes nothing. Loading replaces BlueTide's data in one go and never touches your
+        dates, notes and settings.
       </p>
     </div>
   );

@@ -6,7 +6,7 @@
 import { API_BASE_URL } from "../api/client";
 
 export type ExportList =
-  "order-list" | "stuck-list" | "purchase-orders" | "shipments" | "data-notes" | "harbor-storage";
+  "order-list" | "stuck-list" | "purchase-orders" | "data-notes" | "harbor-storage";
 
 export function DownloadLink({
   list,

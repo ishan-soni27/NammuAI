@@ -13,13 +13,8 @@ import { useToast } from "../components/Toast";
 import { ApiError, apiGet, apiSend, apiUpload } from "./client";
 import type {
   AuditEntry,
-  Customer,
   Harbor,
   Import,
-  PickPlan,
-  Shipment,
-  StockChange,
-  StockLot,
   Dashboard,
   DataIssuePage,
   DataIssueSummary,
@@ -28,11 +23,8 @@ import type {
   ItemCard,
   ItemDetail,
   ItemSettings,
-  ItemDetails,
   LoadRun,
-  Location,
-  Movement,
-  PurchaseOrder,
+  OnTheWayLine,
   Rule,
   Vendor,
 } from "./types";
@@ -50,14 +42,7 @@ export const keys = {
   events: ["events"] as const,
   loadRuns: ["load-runs"] as const,
   settings: ["settings"] as const,
-  purchaseOrders: (status: string, q: string) => ["purchase-orders", status, q] as const,
-  itemDetails: ["item-details"] as const,
-  locations: ["locations"] as const,
-  customers: ["customers"] as const,
-  shipments: (status: string, q: string) => ["shipments", status, q] as const,
-  picks: (orderNo: string) => ["picks", orderNo] as const,
-  stockLots: (item: string) => ["stock-lots", item] as const,
-  stockChanges: (item: string) => ["stock-changes", item] as const,
+  onTheWay: (q: string) => ["on-the-way", q] as const,
   imports: ["imports"] as const,
   harbor: ["harbor"] as const,
 };
@@ -127,59 +112,12 @@ export const useRules = () =>
     queryFn: ({ signal }) => apiGet<Rule[]>("/settings", signal),
   });
 
-export const usePurchaseOrders = (status: string, q: string) =>
+/** BlueTide's open PO lines as the plan counts them (the On the way page). */
+export const useOnTheWay = (q: string) =>
   useQuery({
-    queryKey: keys.purchaseOrders(status, q),
-    queryFn: ({ signal }) =>
-      apiGet<PurchaseOrder[]>(`/purchase-orders?status=${enc(status)}&q=${enc(q)}`, signal),
-    placeholderData: (previous) => previous, // keep the list on screen while a filter reloads
-  });
-
-export const useItemDetails = () =>
-  useQuery({
-    queryKey: keys.itemDetails,
-    queryFn: ({ signal }) => apiGet<ItemDetails[]>("/item-details", signal),
-  });
-
-export const useLocations = () =>
-  useQuery({
-    queryKey: keys.locations,
-    queryFn: ({ signal }) => apiGet<Location[]>("/locations", signal),
-    staleTime: Infinity,
-  });
-
-export const useCustomers = () =>
-  useQuery({
-    queryKey: keys.customers,
-    queryFn: ({ signal }) => apiGet<Customer[]>("/customers", signal),
-  });
-
-export const useShipments = (status: string, q: string) =>
-  useQuery({
-    queryKey: keys.shipments(status, q),
-    queryFn: ({ signal }) =>
-      apiGet<Shipment[]>(`/shipments?status=${enc(status)}&q=${enc(q)}`, signal),
-    placeholderData: (previous) => previous,
-  });
-
-export const usePickPlan = (orderNo: string, enabled: boolean) =>
-  useQuery({
-    queryKey: keys.picks(orderNo),
-    queryFn: ({ signal }) => apiGet<PickPlan>(`/shipments/${enc(orderNo)}/picks`, signal),
-    enabled,
-  });
-
-export const useStockLots = (item: string, enabled = true) =>
-  useQuery({
-    queryKey: keys.stockLots(item),
-    queryFn: ({ signal }) => apiGet<StockLot[]>(`/stock-lots?item=${enc(item)}`, signal),
-    enabled: enabled && Boolean(item),
-  });
-
-export const useStockChanges = (item: string) =>
-  useQuery({
-    queryKey: keys.stockChanges(item),
-    queryFn: ({ signal }) => apiGet<StockChange[]>(`/stock-movements?item=${enc(item)}`, signal),
+    queryKey: keys.onTheWay(q),
+    queryFn: ({ signal }) => apiGet<OnTheWayLine[]>(`/purchase-orders?q=${enc(q)}`, signal),
+    placeholderData: (previous) => previous, // keep the list on screen while a search reloads
   });
 
 export const useImports = () =>
@@ -196,14 +134,8 @@ function refreshAfterEdit(client: QueryClient) {
     keys.items,
     keys.audit,
     ["item"],
-    ["purchase-orders"],
-    keys.itemDetails,
+    ["on-the-way"],
     keys.vendors,
-    ["shipments"],
-    ["picks"],
-    ["stock-lots"],
-    ["stock-changes"],
-    keys.customers,
     keys.imports,
     ["data-issues"],
     keys.loadRuns,
@@ -297,185 +229,12 @@ export const useUpdateItemSettings = () =>
     () => "Item settings saved",
   );
 
-// ---- Dana's own records (Phase 6) ----------------------------------------------------------
-
-export interface POCreateInput {
-  vendor_code: string;
-  po_no: string | null;
-  order_date: string | null;
-  expected_date: string | null;
-  note: string | null;
-  lines: { item_code: string; qty: number; unit_cost: number | null }[];
-  clear_handled_notes: boolean;
-}
-
-export const useCreatePO = () =>
-  useEdit(
-    (v: POCreateInput) => apiSend<PurchaseOrder>("POST", "/purchase-orders", v),
-    (_v, po) => `Saved ${po.po_no}`,
-  );
-
-const line = (po: string, n: number) => `/purchase-orders/${enc(po)}/lines/${n}`;
-
-export const useShipLine = () =>
-  useEdit(
-    (v: { po: string; line: number; container_no: string | null; eta: string | null }) =>
-      apiSend<PurchaseOrder>("POST", `${line(v.po, v.line)}/ship`, {
-        container_no: v.container_no,
-        eta: v.eta,
-      }),
-    (v) => `${v.po} line ${v.line} marked shipped`,
-  );
-
-export const useCancelLine = () =>
-  useEdit(
-    (v: { po: string; line: number; reason: string | null }) =>
-      apiSend<PurchaseOrder>("POST", `${line(v.po, v.line)}/cancel`, { reason: v.reason }),
-    (v) => `${v.po} line ${v.line} cancelled`,
-  );
-
-export const useReopenLine = () =>
-  useEdit(
-    (v: { po: string; line: number }) =>
-      apiSend<PurchaseOrder>("DELETE", `${line(v.po, v.line)}/status`),
-    (v) => `${v.po} line ${v.line} reopened`,
-  );
-
-export interface ReceiveInput {
-  po: string;
-  line: number;
-  qty: number;
-  location_code: string;
-  lot_no: string;
-  expiry_date: string;
-  unit_cost: number | null;
-  allow_over_receipt: boolean;
-}
-
-export const useReceiveLine = () =>
-  useEdit(
-    ({ po, line: n, ...body }: ReceiveInput) =>
-      apiSend<PurchaseOrder>("POST", `${line(po, n)}/receive`, body),
-    (v) => `Received ${v.qty.toLocaleString("en-US")} on ${v.po} line ${v.line}`,
-  );
-
-export const useUndoMovement = () =>
-  useEdit(
-    (v: { id: number; reason: string | null }) =>
-      apiSend<Movement>("POST", `/stock-movements/${v.id}/undo`, { reason: v.reason }),
-    () => "Receipt undone",
-  );
-
-export interface VendorCreateInput {
-  vendor_code: string | null;
-  name: string;
-  country: string | null;
-  lead_time_days: number;
-  cushion_days: number;
-  note: string | null;
-}
-
-export const useCreateVendor = () =>
-  useEdit(
-    (v: VendorCreateInput) => apiSend<Vendor>("POST", "/vendors", v),
-    (_v, vendor) => `Added ${vendor.name}`,
-  );
-
-export interface ItemInputBody {
-  item_code: string;
-  description: string;
-  category: string;
-  sell_uom: "CS" | "LB";
-  lb_per_case: number | null;
-  vendor_code: string;
-  status: "active" | "discontinued";
-  note: string | null;
-}
-
-export const useCreateItem = () =>
-  useEdit(
-    (v: ItemInputBody) => apiSend<ItemDetails>("POST", "/items", v),
-    (_v, item) => `Added ${item.item_code}`,
-  );
-
-export const useUpdateItemDetails = () =>
-  useEdit(
-    ({ item_code, ...body }: Partial<ItemInputBody> & { item_code: string }) =>
-      apiSend<ItemDetails>("PATCH", `/items/${enc(item_code)}/details`, body),
-    (v) => `Saved ${v.item_code}`,
-  );
-
-// ---- Shipments and moving stock (Phase 6 step 2) ----------------------------------------------
-
-export const useCreateCustomer = () =>
-  useEdit(
-    (v: { name: string; customer_code: string | null; customer_type: string }) =>
-      apiSend<Customer>("POST", "/customers", v),
-    (_v, c) => `Added ${c.name}`,
-  );
-
-export interface ShipmentCreateInput {
-  customer_code: string;
-  order_no: string | null;
-  kind: "customer" | "sample";
-  order_date: string | null;
-  ship_date: string | null;
-  location_code: string;
-  note: string | null;
-  lines: { item_code: string; qty: number; unit_price: number | null }[];
-}
-
-export const useCreateShipment = () =>
-  useEdit(
-    (v: ShipmentCreateInput) => apiSend<Shipment>("POST", "/shipments", v),
-    (_v, sh) => `Saved order ${sh.order_no}`,
-  );
-
-export const useShipOrder = () =>
-  useEdit(
-    (v: { orderNo: string; picks: { line_no: number; lot_no: string; qty: number }[] | null }) =>
-      apiSend<Shipment>("POST", `/shipments/${enc(v.orderNo)}/ship`, { picks: v.picks }),
-    (v) => `Order ${v.orderNo} shipped`,
-  );
-
-export const useCancelOrder = () =>
-  useEdit(
-    (v: { orderNo: string; reason: string | null }) =>
-      apiSend<Shipment>("POST", `/shipments/${enc(v.orderNo)}/cancel`, { reason: v.reason }),
-    (v) => `Order ${v.orderNo} cancelled`,
-  );
-
-export const useUndoShip = () =>
-  useEdit(
-    (v: { orderNo: string }) =>
-      apiSend<Shipment>("POST", `/shipments/${enc(v.orderNo)}/undo-ship`, {}),
-    (v) => `Order ${v.orderNo} is open again`,
-  );
-
-export interface MoveInput {
-  item_code: string;
-  from_location: string;
-  lot_no: string;
-  to_location: string;
-  qty: number;
-  note: string | null;
-}
-
-export const useMoveStock = () =>
-  useEdit(
-    (v: MoveInput) => apiSend<Movement[]>("POST", "/stock-moves", v),
-    (v) => `Moved ${v.qty.toLocaleString("en-US")} of ${v.item_code} to ${v.to_location}`,
-  );
-
-// ---- Imports (Phase 6 step 3) -------------------------------------------------------------------
+// ---- Weekly uploads of BlueTide's files (ADR-029) ---------------------------------------------
 
 export const useStartImport = () =>
   useEdit(
-    (v: { kind: "bluetide" | "template" }) => apiSend<Import>("POST", "/imports", v),
-    (v) =>
-      v.kind === "bluetide"
-        ? "Started a BlueTide import"
-        : "Started an import of your spreadsheets",
+    () => apiSend<Import>("POST", "/imports", { kind: "bluetide" }),
+    () => "Started a BlueTide upload",
   );
 
 export const usePutImportFile = () =>

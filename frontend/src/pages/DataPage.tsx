@@ -1,9 +1,8 @@
 /**
- * Data (Phase 6 step 3): bring in new data, see past imports, and what the loader cleaned up.
- *   - "Load new BlueTide files": BlueTide's seven exports (any left out reuse the last load's copy)
- *   - "Load your own spreadsheets": the app's templates (suppliers, items, customers, stock count,
- *     POs, sales history), so the app works without BlueTide (Ishan, 2026-11-26)
- * Each import is checked first (a dry run that changes nothing), then loaded with one click.
+ * Data (ADR-029, ADR-032): Dana's weekly upload of BlueTide's exports, past uploads, and what the
+ * loader cleaned up. BlueTide owns every fact; this is the only way stock, sales and POs get in.
+ * "Load new BlueTide files": any file left out reuses the last load's copy. Each upload is checked
+ * first (a dry run that changes nothing), then loaded with one click.
  * Fed by: GET /imports, /data-issues. Writes: /imports.
  */
 import { useState } from "react";
@@ -36,8 +35,8 @@ export function DataPage() {
         <div>
           <h1 className="text-2xl font-bold">Data</h1>
           <p className="mt-1 text-fog">
-            Bring in this week's BlueTide files, or your own spreadsheets. Nothing changes until
-            you've seen the check and pressed Load.
+            Bring in this week's BlueTide files. Nothing changes until you've seen the check and
+            pressed Load.
           </p>
         </div>
         <DownloadLink
@@ -61,18 +60,10 @@ export function DataPage() {
             <button
               type="button"
               disabled={start.isPending}
-              onClick={() => start.mutate({ kind: "bluetide" }, { onSuccess: setActive })}
+              onClick={() => start.mutate(undefined, { onSuccess: setActive })}
               className={secondaryButton}
             >
               Load new BlueTide files
-            </button>
-            <button
-              type="button"
-              disabled={start.isPending}
-              onClick={() => start.mutate({ kind: "template" }, { onSuccess: setActive })}
-              className={secondaryButton}
-            >
-              Load your own spreadsheets
             </button>
           </div>
         )}
@@ -94,9 +85,7 @@ export function DataPage() {
                     className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm"
                   >
                     <span>
-                      <span className="font-semibold">
-                        {imp.kind === "bluetide" ? "BlueTide files" : "Your spreadsheets"}
-                      </span>{" "}
+                      <span className="font-semibold">BlueTide files</span>{" "}
                       <span className="text-fog">
                         {formatTimestamp(imp.created_at)} by {imp.created_by}
                         {imp.files.length > 0 &&

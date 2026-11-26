@@ -111,8 +111,8 @@ function ItemRow({ item, harbor }: { item: HarborItem; harbor: Harbor }) {
         </p>
         {item.unconverted_lots > 0 && (
           <p className="text-sm text-red">
-            {lots(item.unconverted_lots)} in pounds can't be put on pallets: add pounds per case on
-            the Items page.
+            {lots(item.unconverted_lots)} in pounds can't be put on pallets: the pounds per case
+            isn't known (it comes from the pack size in BlueTide's item file).
           </p>
         )}
       </div>

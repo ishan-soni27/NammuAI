@@ -13,14 +13,10 @@ import { getActor, hasChosenActor } from "./lib/actor";
 import { ActivityPage } from "./pages/ActivityPage";
 import { DataPage } from "./pages/DataPage";
 import { HarborPage } from "./pages/HarborPage";
-import { ItemsPage } from "./pages/ItemsPage";
 import { LeadTimesPage } from "./pages/LeadTimesPage";
 import { MondayPage } from "./pages/MondayPage";
-import { NewPOPage } from "./pages/NewPOPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage";
-import { NewShipmentPage } from "./pages/NewShipmentPage";
-import { ShipmentsPage } from "./pages/ShipmentsPage";
+import { OnTheWayPage } from "./pages/OnTheWayPage";
 
 const ItemPage = lazy(() => import("./pages/ItemPage").then((m) => ({ default: m.ItemPage })));
 
@@ -41,12 +37,12 @@ export function App() {
         <Suspense fallback={<LoadingState label="Loading this page" />}>
           <Routes>
             <Route path="/" element={<MondayPage />} />
-            <Route path="/items" element={<ItemsPage />} />
             <Route path="/items/:code" element={<ItemPage />} />
-            <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
-            <Route path="/purchase-orders/new" element={<NewPOPage />} />
-            <Route path="/shipments" element={<ShipmentsPage />} />
-            <Route path="/shipments/new" element={<NewShipmentPage />} />
+            <Route path="/on-the-way" element={<OnTheWayPage />} />
+            {/* Cut in ADR-032 (BlueTide stays the record): old links land somewhere useful. */}
+            <Route path="/purchase-orders/*" element={<Navigate to="/on-the-way" replace />} />
+            <Route path="/shipments/*" element={<Navigate to="/" replace />} />
+            <Route path="/items" element={<Navigate to="/" replace />} />
             <Route path="/suppliers" element={<LeadTimesPage />} />
             <Route path="/lead-times" element={<Navigate to="/suppliers" replace />} />
             <Route path="/harbor" element={<HarborPage />} />

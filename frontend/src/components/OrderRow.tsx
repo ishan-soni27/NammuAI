@@ -175,12 +175,6 @@ export function OrderRow({
               Mark as handled
             </button>
           )}
-          <Link
-            to={`/purchase-orders/new?item=${encodeURIComponent(card.item_code)}&qty=${Math.ceil(card.order_at_least) || ""}`}
-            className="rounded-md border border-ink px-3 py-1.5 font-semibold hover:bg-ice"
-          >
-            Create a PO
-          </Link>
           <Link to={itemLink} className="px-1 py-1.5 font-semibold underline underline-offset-2">
             See why and all the numbers
           </Link>

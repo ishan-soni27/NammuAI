@@ -11,9 +11,7 @@ import { formatLongDate } from "../lib/dates";
 
 const LINKS = [
   { to: "/", label: "Monday" },
-  { to: "/purchase-orders", label: "Purchase orders" },
-  { to: "/shipments", label: "Shipments" },
-  { to: "/items", label: "Items" },
+  { to: "/on-the-way", label: "On the way" },
   { to: "/suppliers", label: "Suppliers" },
   { to: "/harbor", label: "Harbor" },
   { to: "/data", label: "Data" },

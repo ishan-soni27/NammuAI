@@ -363,195 +363,31 @@ export interface ApiErrorBody {
   };
 }
 
-// ---- Dana's own records (Phase 6, ADR-026/027) ---------------------------------------------
+// ---- On the way (ADR-032): mirrors OnTheWayLineOut in schemas.py ------------------------------
 
-export type RecordSource = "app" | "bluetide" | "both";
-
-/** GET /item-details */
-export interface ItemDetails {
-  item_code: string;
-  description: string;
-  category: string;
-  sell_uom: "CS" | "LB";
-  lb_per_case: number | null;
-  vendor_code: string;
-  status: "active" | "discontinued";
-  source: RecordSource;
-  note: string | null;
-  updated_at: string | null;
-  updated_by: string | null;
-}
-
-export interface Receipt {
-  movement_id: number;
-  received_on: string;
-  qty: number;
-  location_code: string;
-  location_name: string;
-  lot_no: string;
-  expiry_date: string | null;
-  unit_cost: number | null;
-  created_by: string;
-  added_to_stock: boolean;
-  why_not: string | null;
-}
-
-export type POLineStatus = "open" | "shipped" | "received" | "cancelled" | "late";
-
-export interface POLine {
+/** GET /purchase-orders: one open BlueTide PO line, as the plan counts it. */
+export interface OnTheWayLine {
   po_no: string;
   line_no: number;
   item_code: string;
   description: string;
   sell_uom: string;
-  source: RecordSource;
-  ordered: number;
-  received: number;
-  remaining: number;
-  status: POLineStatus;
-  counted: boolean;
-  eta: string | null;
-  eta_source: string | null;
-  bluetide_date: string | null;
-  shipped_on: string | null;
-  container_no: string | null;
-  cancel_reason: string | null;
-  unit_cost: number | null;
-  flags: string[];
-  receipts: Receipt[];
-}
-
-export type POStatus = "open" | "shipped" | "late" | "partly_received" | "received" | "cancelled";
-
-/** GET /purchase-orders */
-export interface PurchaseOrder {
-  po_no: string;
-  vendor_code: string;
   vendor_name: string;
-  order_date: string;
-  source: RecordSource;
-  status: POStatus;
-  expected_date: string | null;
-  note: string | null;
-  created_by: string | null;
-  lines: POLine[];
-}
-
-export interface Movement {
-  id: number;
-  movement_date: string;
-  kind: string;
-  item_code: string;
-  location_code: string;
-  lot_no: string;
   qty: number;
-  reverses_id: number | null;
-  created_by: string;
-}
-
-/** GET /locations */
-export interface Location {
-  code: string;
-  name: string;
-  is_sellable: boolean;
-  may_return_to_stock: boolean;
-  is_third_party_storage: boolean;
-  can_receive: boolean;
-}
-
-// ---- Shipments and moving stock (Phase 6 step 2) -------------------------------------------
-
-export interface Customer {
-  customer_code: string;
-  name: string;
-  customer_type: string;
-  source: RecordSource;
-}
-
-export interface Pick {
-  line_no: number;
-  item_code: string;
-  location_code: string;
-  location_name: string;
-  lot_no: string;
-  expiry_date: string | null;
-  qty: number;
-}
-
-export interface PickPlan {
-  picks: Pick[];
-  short: Record<string, number>;
-}
-
-export interface ShipmentLine {
-  line_no: number;
-  item_code: string;
-  description: string;
-  sell_uom: string;
-  qty: number;
-  unit_price: number | null;
-  promised: boolean;
-  taken_from_stock: boolean;
-  counts_as_demand: boolean;
+  /** Our arrival date; null = late, not counted until Dana sets one. */
+  eta: string | null;
+  eta_source: string;
+  bluetide_date: string | null;
+  is_late: boolean;
   flags: string[];
-  picks: Pick[];
 }
 
-/** GET /shipments */
-export interface Shipment {
-  order_no: string;
-  customer_code: string;
-  customer_name: string;
-  kind: "customer" | "sample";
-  order_date: string;
-  ship_date: string;
-  location_code: string;
-  location_name: string;
-  status: "open" | "shipped" | "cancelled";
-  shipped_on: string | null;
-  cancel_reason: string | null;
-  note: string | null;
-  created_by: string;
-  lines: ShipmentLine[];
-}
-
-/** GET /stock-lots?item= */
-export interface StockLot {
-  item_code: string;
-  location_code: string;
-  location_name: string;
-  lot_no: string;
-  qty: number;
-  expiry_date: string | null;
-  unit_cost: number | null;
-  counted: boolean;
-  at_harbor: boolean;
-}
-
-/** GET /stock-movements?item= */
-export interface StockChange {
-  id: number;
-  movement_date: string;
-  kind: string;
-  location_code: string;
-  lot_no: string;
-  qty: number;
-  po_no: string | null;
-  order_no: string | null;
-  note: string | null;
-  created_by: string;
-  undone: boolean;
-  is_undo: boolean;
-  can_undo: boolean;
-}
-
-// ---- Imports (Phase 6 step 3) ---------------------------------------------------------------
+// ---- Weekly uploads of BlueTide's files (ADR-029) ---------------------------------------------
 
 export interface ImportSlot {
   slot: string;
   label: string;
   expected_name: string;
-  columns: string[];
 }
 
 export interface ImportFile {
@@ -563,7 +399,7 @@ export interface ImportFile {
 }
 
 export interface ImportReport {
-  kind: "bluetide" | "template";
+  kind: "bluetide";
   files: {
     slot: string;
     label: string;
@@ -579,16 +415,13 @@ export interface ImportReport {
   snapshot_date?: string;
   current_snapshot_date?: string | null;
   notes?: { total: number; by_problem: { trap_id: string; title: string; count: number }[] };
-  conflicts?: string[];
-  orphans?: string[];
-  problems?: { slot: string; label: string; line: number; message: string }[];
   loaded?: Record<string, unknown>;
 }
 
 /** GET /imports, /imports/{id} */
 export interface Import {
   id: number;
-  kind: "bluetide" | "template";
+  kind: "bluetide";
   status: "open" | "checked" | "loaded" | "failed" | "discarded";
   created_at: string;
   created_by: string;
