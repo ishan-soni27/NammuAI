@@ -1275,3 +1275,93 @@ He asked two questions in the plan: (a) the instruction's wording; (b) the reten
 - Two lines over the length limit after edits (fixed); the type checker then listed the screens still using cut
   hooks, and each was fixed.
 **Follow-ups:** step 3 (weekly uploads) when Ishan says go. **Ishan:** check that `AS_OF_DATE` isn't set on Vercel.
+
+### Step 3: make weekly uploads work ("go"; STOP after)
+**What changed:**
+- **"Today" follows the data:**
+  - `settings.as_of_date` is an optional override (blank = follow the data);
+  - `business_rules.rules_for_snapshot` = the stock count + 1 day, cached per snapshot;
+  - every router uses `api/deps.request_rules` (the latest load), and health derives it from its own DB check, so it
+    still answers when the database is down;
+  - the laptop loader and the import's check and load work out "today" from the **uploaded** stock file
+    (`pipeline.snapshot_date_of`), so expiry, late POs and dormant items are judged as of that week;
+  - the header shows "Monday, November 16, 2026 · BlueTide stock count of Sun Nov 15";
+  - with today's data, AS_OF is still 2026-11-16;
+  - the tests stopped pinning `AS_OF_DATE`, so the API tests exercise the derivation;
+  - `backend/.env`'s `AS_OF_DATE` line was commented out (only that line) and `.env.example` documents it as
+    optional.
+- **Handled notes:**
+  - `handled_flags.created_on` (migration 0007; the 9 existing notes backfilled with 2026-11-16) is set from AS_OF on
+    create;
+  - the engine gets it, instead of re-dating every note to "today";
+  - the "BlueTide now shows PO-x" hint compares each PO's order date with the note's own day.
+- **Sales accumulate:**
+  - `loader/accumulate.merge_sales` (pure) merges by order + line: the new file wins, and older lines it no longer
+    lists are kept;
+  - `loader/history.raw_file_from_run` reads the previous load's rows back with their origin;
+  - `raw_rows.origin_load_run_id` (0007; 82,710 rows backfilled) and `SourceRef.origin` keep every carried-over line
+    traceable;
+  - data notes on those lines name their load ("bluetide_sales_lines.csv (load #1)");
+  - the check reports new / changed / same / kept, and warns under a year of history (the existing
+    `seasonal_window_days`, not a new number);
+  - the laptop loader merges the same way; a dry run can't, and says so.
+- **Import checks:** "stock count after today" is gone; "older than the loaded one" still blocks; a same-night count
+  warns; the check shows "Loading them makes today Mon Nov 23".
+- **Retention:**
+  - `raw_rows_keep_loads = 8`;
+  - `write_load(keep_loads=)` deletes old data notes and then raw rows inside the load transaction, and clears old
+    uploads' file bytes (`upload_files.content` nullable in 0007);
+  - the run's summary lists the pruned loads; load runs stay;
+  - both the laptop loader and the import pass it.
+- **Season bands:** `planning/calendar.easter` (anonymous Gregorian) and `season_markers(start, end)`; the fixed
+  `business_rules.season_markers` is gone.
+**Impact:**
+- **Checks:** 238 backend tests pass (12 new). They include:
+  - Lent 2027 = Feb 10–Mar 28 and Lent 2028 = Mar 1–Apr 16;
+  - "today" derived, overridden, or with no load;
+  - next week's count makes today Mon Nov 23, and the load used it;
+  - recent-weeks-only sales keep the history: same line count, rate, season and Monday, and the kept lines trace to
+    load #1;
+  - an OPEN line now INVOICED updates without duplicating, plus one new line: SHR-1620's promised goes 201 → 91;
+  - the under-a-year warning;
+  - a note's business day and the hint;
+  - retention keeps exactly the newest 2 of 3 loads' raw rows and notes, all summaries, and clears the old upload's
+    bytes.
+  Ruff, build, lint and format are clean, and the raw-file checksums match.
+- **Local browser check:**
+  - uploading this week's stock + sales files: the check says today stays Mon Nov 16, 15,750 sales lines the same,
+    and warns about the same night; loading it leaves Monday unchanged at 3/6/5/16;
+  - then next week's stock count (a scratch copy with dates +7): the check says today becomes Mon Nov 23; after
+    loading, the header and dashboard say Monday, November 23, 2026;
+  - every page has no errors and no sideways scrolling.
+- **Live:**
+  - ran **0007 on Supabase first** (additive; no drift), then pushed;
+  - version 98e995b: health as_of 2026-11-16 with snapshot_date 2026-11-15; Monday 3/6/5/16, 3 late POs (1,500
+    cases); SHR-1620 480 / 201 / Dec 14; chart bands Christmas and Lent 2027;
+  - the page sweep and the edit click-through pass;
+  - **an upload check ran on production** (stock + sales files: today stays Mon Nov 16, 15,750 the same,
+    same-night warning) and was discarded with "Start over", so nothing was loaded.
+**Decisions made (and by whom):**
+- Ishan: the step as planned, retention 8 with upload bytes cleared.
+- Claude:
+  - health derives "today" without a request session;
+  - carried-over data notes name their load in the file column;
+  - "under a year" reuses `seasonal_window_days`;
+  - never-loaded uploads older than the oldest kept load also lose their bytes.
+**AI mistakes caught or corrected:**
+- **A hard-coded "12 months"** in the first import-check draft would have broken invariant 3 (numbers live in
+  `business_rules`). Replaced with the existing `seasonal_window_days` before any test ran.
+- **A wrong assertion in my own test:** it expected a sales summary in a check that uploaded no sales file. Fixed the
+  test; the app was right.
+- **`Path.read_text(newline=...)` is Python 3.13+,** and the backend runs 3.12, so a test helper failed. It now reads
+  bytes and decodes them.
+- **The `.env.example` invariant test only counted uncommented keys,** so documenting `AS_OF_DATE` as an optional,
+  commented example failed it. The test now accepts commented examples; its intent (every setting documented) stands.
+- **An edit didn't apply** because the formatter had already wrapped the target line. The edit's check caught it and
+  wrote nothing, and the code was already right.
+- **I ran the checksum command from the wrong folder,** which reported 18 files missing. Re-run from the repo root:
+  all match.
+**Follow-ups:**
+- Step 4 (numbers-only "why") when Ishan says go.
+- **Ishan:** check Vercel for `AS_OF_DATE`. Live shows Nov 16 either way today, so I can't tell from outside whether
+  it's set.
