@@ -876,7 +876,7 @@ holding its cards.
   Both were fixed in the check; the app was right.
 **Follow-ups:** Step 6.3 (Import) is next, when Ishan says go.
 
-## #30 | 2026-11-27 18:55 UTC | "go": step 3, Import
+## #30 | 2026-11-26 18:40 UTC | "go": step 3, Import
 **Prompt (simplified):** Start step 3 of Phase 6: imports from the website.
 **What changed:**
 - **Loader:**
@@ -943,7 +943,7 @@ holding its cards.
   - files over 4.4 MB must be split;
   - "today" is still fixed at Nov 16.
 
-## #31 | 2026-11-27 19:40 UTC | "go": step 4, Download to Excel
+## #31 | 2026-11-26 19:05 UTC | "go": step 4, Download to Excel
 **Prompt (simplified):** Start step 4 of Phase 6: CSV downloads.
 **What changed:**
 - **`services/export_service.py`** builds five CSVs from the same services as the screens:
@@ -978,6 +978,8 @@ holding its cards.
   split by hand.
 - A screenshot-stitching script failed because Pillow isn't installed for the system Python; each screenshot was
   checked on its own instead. No effect on the app.
+- **Wrong log dates.** Entries #30 and #31 were first dated Nov 27 UTC. The laptop is on IST (UTC+5:30), so it's
+  Nov 27 locally but Nov 26 in UTC. Both are corrected to real UTC (#30 from its commit time, 18:42 UTC).
 **Follow-ups:**
 - **Phase 6 is done.** Next, when Ishan says: the Harbor storage calculator (P1 #1), then the README and demo phase.
 - Still open: Ishan to confirm the Vercel cron.
