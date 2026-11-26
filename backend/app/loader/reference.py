@@ -146,3 +146,20 @@ def load_reference(ref_dir: Path = REFERENCE_DIR) -> ReferenceData:
         stockout_periods=tuple(stockout_periods),
         excluded_orders=excluded_orders,
     )
+
+
+def reference_texts(ref_dir: Path = REFERENCE_DIR) -> dict[str, str]:
+    """Every seed CSV's exact text (file name -> text), stored on each load run (ADR-029)."""
+    return {path.name: path.read_text(encoding="utf-8") for path in sorted(ref_dir.glob("*.csv"))}
+
+
+def load_reference_from_texts(texts: dict[str, str]) -> ReferenceData:
+    """The same seeds, rebuilt from a load run's stored copy (for imports on the deployed API)."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        for name, text in texts.items():
+            if "/" in name or "\\" in name or not name.endswith(".csv"):
+                raise ReferenceDataError(f"Unexpected reference file name {name!r}")
+            (Path(tmp) / name).write_text(text, encoding="utf-8")
+        return load_reference(Path(tmp))

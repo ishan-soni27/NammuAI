@@ -24,7 +24,7 @@ from app.config.settings import REPO_ROOT, get_settings
 from app.db.session import make_engine
 from app.loader.pipeline import build_dataset
 from app.loader.read_raw import read_all_raw
-from app.loader.reference import load_reference
+from app.loader.reference import load_reference, reference_texts
 from app.loader.report import render_report
 from app.loader.write import fail_load_run, start_load_run, write_load
 from app.logging_setup import configure_logging, redact_database_url
@@ -91,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.dry_run:
         engine = make_engine(settings.database_url, pooled=False, connect_timeout=LAPTOP_CONNECT_TIMEOUT_S)
         logger.info("writing to database", extra={"database": redact_database_url(settings.database_url)})
-        run_id = start_load_run(engine, result, rules, git_sha)
+        run_id = start_load_run(engine, result, rules, git_sha, reference_texts())
         try:
             summary = write_load(engine, run_id, result, reference.vendor_settings)
         except Exception as error:

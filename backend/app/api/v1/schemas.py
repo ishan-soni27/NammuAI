@@ -762,3 +762,43 @@ class StockChangeOut(BaseModel):
     undone: bool
     is_undo: bool
     can_undo: bool  # receipts and moves undo here; a shipment's picks undo with the order
+
+
+# ---- Imports (Phase 6 step 3) ---------------------------------------------------------------------
+
+
+class ImportSlotOut(BaseModel):
+    slot: str
+    label: str
+    expected_name: str
+    columns: list[str]  # template columns (empty for BlueTide files)
+
+
+class ImportFileOut(BaseModel):
+    slot: str
+    file_name: str
+    rows: int
+    size_bytes: int
+    sha256: str
+
+
+class ImportCreateIn(BaseModel):
+    kind: Literal["bluetide", "template"]
+
+
+class ImportLoadIn(BaseModel):
+    confirm_code: str = Field(min_length=1, max_length=40)
+
+
+class ImportOut(BaseModel):
+    id: int
+    kind: Literal["bluetide", "template"]
+    status: Literal["open", "checked", "loaded", "failed", "discarded"]
+    created_at: datetime
+    created_by: str
+    slots: list[ImportSlotOut]
+    files: list[ImportFileOut]
+    report: dict[str, Any] | None
+    confirm_code: str | None  # only after a check with nothing blocking
+    load_run_id: int | None
+    error: str | None

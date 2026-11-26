@@ -99,7 +99,7 @@ def _timed(step: str) -> Iterator[None]:
     )
 
 
-def _copy_rows(conn: Connection, table: Table, rows: list[dict[str, Any]]) -> None:
+def _copy_rows(conn: Connection, table: Table, rows: list[dict[str, Any]], use_copy: bool = True) -> None:
     """Bulk insert with Postgres COPY: thousands of rows in one stream, not one round trip each.
 
     The first successful load spent 3+ minutes sending raw and sales rows one at a time over a
@@ -109,8 +109,11 @@ def _copy_rows(conn: Connection, table: Table, rows: list[dict[str, Any]]) -> No
     """
     if not rows:
         return
-    if conn.dialect.name != "postgresql":
-        conn.execute(insert(table), rows)  # tests: SQLite has no COPY; a plain bulk insert is fine
+    if conn.dialect.name != "postgresql" or not use_copy:
+        # Tests (SQLite has no COPY), and imports from the website: production connects through
+        # Supabase's transaction pooler, which doesn't support COPY. SQLAlchemy batches these
+        # inserts (insertmanyvalues), and the API runs next to the database, so it's quick.
+        conn.execute(insert(table), rows)
         return
     columns = list(rows[0].keys())
     driver = conn.connection.driver_connection  # the psycopg connection under SQLAlchemy
@@ -135,13 +138,32 @@ def _row(obj: Any, raw_ids: dict[tuple[str, int], int] | None = None) -> dict[st
     return out
 
 
-def start_load_run(engine: Engine, result: LoadResult, rules: BusinessRules, git_sha: str) -> int:
-    """Create the load_runs row (status "running") in its own transaction and return its id."""
-    files = [{"name": f.file_name, "sha256": f.sha256, "rows": len(f.records)} for f in result.raw_files]
+def start_load_run(
+    engine: Engine,
+    result: LoadResult,
+    rules: BusinessRules,
+    git_sha: str,
+    reference: dict[str, str] | None = None,
+) -> int:
+    """Create the load_runs row (status "running") in its own transaction and return its id.
+
+    `reference` is the data/reference/*.csv seeds as read (file name -> text), kept so a later
+    import from the website can use them (the deployed API doesn't ship data/).
+    """
+    files = [
+        {"name": f.file_name, "sha256": f.sha256, "rows": len(f.records), "slot": f.logical_name}
+        for f in result.raw_files
+    ]
     with engine.begin() as conn:
         run_id = conn.execute(
             insert(LoadRun.__table__)
-            .values(status="running", as_of_date=rules.as_of_date, files=files, git_sha=git_sha)
+            .values(
+                status="running",
+                as_of_date=rules.as_of_date,
+                files=files,
+                git_sha=git_sha,
+                reference=reference,
+            )
             .returning(LoadRun.__table__.c.id)
         ).scalar_one()
         conn.execute(
@@ -175,7 +197,12 @@ def fail_load_run(engine: Engine, run_id: int, error: BaseException) -> None:
 
 
 def write_load(
-    engine: Engine, run_id: int, result: LoadResult, vendor_seeds: tuple[VendorSettingSeed, ...]
+    engine: Engine,
+    run_id: int,
+    result: LoadResult,
+    vendor_seeds: tuple[VendorSettingSeed, ...],
+    *,
+    use_copy: bool = True,
 ) -> WriteSummary:
     """Write everything for one load in a single transaction (see module docstring).
 
@@ -204,7 +231,7 @@ def write_load(
         ]
         raw_table = RawRow.__table__
         with _timed("raw_rows"):
-            _copy_rows(conn, raw_table, raw_rows)
+            _copy_rows(conn, raw_table, raw_rows, use_copy)
             returned = conn.execute(
                 select(raw_table.c.id, raw_table.c.source_file, raw_table.c.source_line_number).where(
                     raw_table.c.load_run_id == run_id
@@ -234,7 +261,7 @@ def write_load(
         for table, rows in clean_inserts:
             if rows:
                 with _timed(table.name):
-                    _copy_rows(conn, table, rows)
+                    _copy_rows(conn, table, rows, use_copy)
 
         # 3. App layer: seed Dana's lead times ONLY for vendors that have no row yet (§6.5).
         seeds = {s.vendor_code: s for s in vendor_seeds}

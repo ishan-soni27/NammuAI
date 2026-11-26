@@ -471,6 +471,66 @@ def _app_shipment_lines(
     return out
 
 
+def _latest_counts(session: Session) -> dict[str, tuple[date, list[LotInput]]]:
+    """Per item, the lots in Dana's newest stock count that lists it (template import)."""
+    rows = session.execute(
+        select(m.StockCount.id, m.StockCount.count_date, m.StockCountLine).join(
+            m.StockCountLine, m.StockCountLine.count_id == m.StockCount.id
+        )
+    ).all()
+    newest: dict[str, tuple[date, int]] = {}
+    for count_id, count_date, line in rows:
+        best = newest.get(line.item_code)
+        if best is None or (count_date, count_id) > best:
+            newest[line.item_code] = (count_date, count_id)
+    out: dict[str, tuple[date, list[LotInput]]] = {}
+    for count_id, count_date, line in rows:
+        if newest[line.item_code] != (count_date, count_id):
+            continue
+        out.setdefault(line.item_code, (count_date, []))[1].append(
+            LotInput(
+                line.item_code,
+                line.location_code,
+                line.lot_no,
+                float(line.qty),
+                line.expiry_date,
+                False,
+                float(line.unit_cost) if line.unit_cost is not None else None,
+            )
+        )
+    return out
+
+
+def _app_sales_history(
+    session: Session, facts: BlueTideFacts, items: tuple[ItemInput, ...], rules: BusinessRules
+) -> tuple[tuple[SaleInput, ...], frozenset[tuple[str, str]]]:
+    """Dana's imported past sales: real demand only (classified like BlueTide's), for the selling rate."""
+    customers = all_customers(session, facts)
+    lifecycle = {i.item_code: i.lifecycle_status for i in items}
+    sales: list[SaleInput] = []
+    keys: set[tuple[str, str]] = set()
+    for x in session.scalars(select(m.AppSalesLine)).all():
+        keys.add((x.order_no, x.item_code))
+        name, ctype = customers.get(x.customer_code, (x.customer_code, None))
+        demand_class = classify_sale(
+            SaleFacts(
+                status="INVOICED",
+                customer_type=ctype,
+                order_no=x.order_no,
+                qty=x.qty,
+                unit_price=x.unit_price if x.unit_price is not None else Decimal(1),
+                item_lifecycle=lifecycle.get(x.item_code, "active"),
+            ),
+            set(facts.excluded_orders),
+            rules,
+        )
+        if demand_class == "real_demand":
+            sales.append(
+                SaleInput(x.item_code, x.order_no, name, x.order_date, x.ship_date, float(x.qty), False)
+            )
+    return tuple(sales), frozenset(keys)
+
+
 def _movements(session: Session) -> list[MovementInput]:
     """Dana's picks, moves and adjustments, leaving out anything undone (and the undo rows)."""
     rows = session.scalars(select(m.StockMovement).where(m.StockMovement.kind != "receipt")).all()
@@ -508,21 +568,45 @@ def build_context(session: Session, rules: BusinessRules) -> PlanningContext:
     vendors, app_vendors = _app_vendors(session, clean)
     reconciled = _reconcile(session, facts, load)
     shipments = reconcile_shipments(_app_shipment_lines(session, facts, items, rules), facts.orders)
-    base_lots = [LotRecord(lot, "bluetide") for lot in clean.lots] + [
-        LotRecord(r.lot, "received", f"Received in the app ({r.po_no} line {r.po_line_no})")
-        for r in reconciled.received_lots
-    ]
+    # Dana's own stock counts (template import): for the items a count lists, the newest count is the
+    # starting stock if it's newer than BlueTide's, and anything dated on/before it is already in it.
+    counted = {
+        item: (count_date, lots)
+        for item, (count_date, lots) in _latest_counts(session).items()
+        if load.snapshot_date is None or count_date > load.snapshot_date
+    }
+
+    def before_count(item: str, on: date) -> bool:
+        return item in counted and on <= counted[item][0]
+
+    base_lots = (
+        [LotRecord(lot, "bluetide") for lot in clean.lots if lot.item_code not in counted]
+        + [
+            LotRecord(lot, "counted", f"From your stock count on {count_date:%b} {count_date.day}")
+            for count_date, lots in counted.values()
+            for lot in lots
+        ]
+        + [
+            LotRecord(r.lot, "received", f"Received in the app ({r.po_no} line {r.po_line_no})")
+            for r in reconciled.received_lots
+            if not before_count(r.lot.item_code, r.received_on)
+        ]
+    )
+    movements = [mv for mv in _movements(session) if not before_count(mv.item_code, mv.movement_date)]
     sellable = frozenset(x.code for x in clean.locations if x.is_sellable)
     lot_records, movement_flags = apply_movements(
-        base_lots, _movements(session), shipments.applied_shipments, load.snapshot_date, sellable
+        base_lots, movements, shipments.applied_shipments, load.snapshot_date, sellable
     )
+    history, history_keys = _app_sales_history(session, facts, items, rules)
     sales = (
         tuple(
             x
             for x in clean.sales
             if not (x.is_open and (x.order_no, x.item_code) in shipments.drop_bluetide_open)
+            and (x.order_no, x.item_code) not in history_keys  # her copy of the same sale wins
         )
         + shipments.sales
+        + history
     )
     inputs = replace(
         clean,

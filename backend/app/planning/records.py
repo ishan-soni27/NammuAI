@@ -444,7 +444,7 @@ class LotRecord:
     """A lot the plan counts, with where it came from (shown on the item page)."""
 
     lot: LotInput
-    origin: Literal["bluetide", "received", "moved"]
+    origin: Literal["bluetide", "received", "moved", "counted"]  # counted = Dana's own stock count
     note: str | None = None
 
 

@@ -9,7 +9,8 @@
     APP      vendor_settings, item_settings, po_eta_overrides, handled_flags: what Dana tells
              the tool; and, since Phase 6 (ADR-026/027), her own records: app_vendors,
              app_items, purchase_orders, purchase_order_lines_app, po_line_status,
-             stock_movements, app_customers, shipments, shipment_lines. The loader NEVER
+             stock_movements, app_customers, shipments, shipment_lines, uploads, upload_files,
+             stock_counts, stock_count_lines, app_sales_lines. The loader NEVER
              truncates or deletes these (invariant #5,
              ADR-008). BlueTide is one optional source; the app plans from these alone too.
     LOGGING  load_runs, data_issues, audit_log, event_log, request_log (§10).
@@ -47,6 +48,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     Numeric,
     PrimaryKeyConstraint,
@@ -98,6 +100,8 @@ PO_LINE_STATUSES = ("shipped", "cancelled")  # "received" is never stored: it is
 MOVEMENT_KINDS = ("receipt", "shipment", "sample", "move_out", "move_in", "adjustment")
 SHIPMENT_STATUSES = ("open", "shipped", "cancelled")
 SHIPMENT_KINDS = ("customer", "sample")  # transfers between buildings are stock moves, not shipments
+UPLOAD_KINDS = ("bluetide", "template")
+UPLOAD_STATUSES = ("open", "checked", "loaded", "failed", "discarded")
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -153,6 +157,9 @@ class LoadRun(Base):
     files: Mapped[list[dict[str, Any]]] = mapped_column(server_default="[]")
     summary: Mapped[dict[str, Any]] = mapped_column(server_default="{}")
     git_sha: Mapped[str | None]
+    # The data/reference/*.csv seeds exactly as this load read them (file name -> text). The website's
+    # import uses the last load's copy, because the deployed API doesn't ship data/ (Phase 6 step 3).
+    reference: Mapped[dict[str, Any] | None] = mapped_column(JSON_DOC)
 
 
 # =====================================================================================
@@ -642,6 +649,98 @@ class ShipmentLine(Base):
     unit_price: Mapped[Decimal | None]
 
 
+# ---- Imports (Phase 6 step 3; ADR-029) --------------------------------------------------------
+
+
+class Upload(Base):
+    """One import from the website: BlueTide's export files, or Dana's own templates."""
+
+    __tablename__ = "uploads"
+    __table_args__ = (
+        CheckConstraint(_in("kind", UPLOAD_KINDS), name="kind"),
+        CheckConstraint(_in("status", UPLOAD_STATUSES), name="status"),
+    )
+
+    id: Mapped[int] = _pk()
+    kind: Mapped[str]
+    status: Mapped[str]
+    report: Mapped[dict[str, Any] | None] = mapped_column(JSON_DOC)  # the check (dry run), then the load
+    confirm_code: Mapped[str | None]  # the one-time code the check hands out; the load must send it
+    load_run_id: Mapped[int | None] = mapped_column(BIG_ID, ForeignKey("load_runs.id"))
+    error: Mapped[str | None]
+    created_at: Mapped[datetime] = _created_now()
+    created_by: Mapped[str]
+    updated_at: Mapped[datetime] = _created_now()
+    updated_by: Mapped[str]
+
+
+class UploadFile(Base):
+    """A file Dana uploaded into one slot of an import, kept byte for byte (sha256 as for the loader)."""
+
+    __tablename__ = "upload_files"
+    __table_args__ = (UniqueConstraint("upload_id", "slot"),)
+
+    id: Mapped[int] = _pk()
+    upload_id: Mapped[int] = mapped_column(BIG_ID, ForeignKey("uploads.id"))
+    slot: Mapped[str]  # "items", "sales_lines", ... (BlueTide) or "suppliers", "stock_count", ... (templates)
+    file_name: Mapped[str]
+    sha256: Mapped[str]
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    rows: Mapped[int] = mapped_column(Integer)
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = _created_now()
+
+
+class StockCount(Base):
+    """Dana's own stock count on a date: from then on it's the starting stock for the items it lists."""
+
+    __tablename__ = "stock_counts"
+
+    id: Mapped[int] = _pk()
+    count_date: Mapped[date]  # business date (invariant #1)
+    upload_id: Mapped[int | None] = mapped_column(BIG_ID, ForeignKey("uploads.id"))
+    note: Mapped[str | None]
+    created_at: Mapped[datetime] = _created_now()
+    created_by: Mapped[str]
+
+
+class StockCountLine(Base):
+    __tablename__ = "stock_count_lines"
+    __table_args__ = (CheckConstraint("qty >= 0", name="qty_not_negative"),)
+
+    id: Mapped[int] = _pk()
+    count_id: Mapped[int] = mapped_column(BIG_ID, ForeignKey("stock_counts.id"))
+    item_code: Mapped[str]
+    location_code: Mapped[str]
+    lot_no: Mapped[str]
+    qty: Mapped[Decimal]  # in the item's selling unit
+    expiry_date: Mapped[date | None]
+    unit_cost: Mapped[Decimal | None]
+
+
+class AppSalesLine(Base):
+    """A past sale from Dana's own sales history: feeds the selling rate (never stock: it's history)."""
+
+    __tablename__ = "app_sales_lines"
+    __table_args__ = (
+        UniqueConstraint("order_no", "line_no"),
+        CheckConstraint("qty > 0", name="qty_positive"),
+    )
+
+    id: Mapped[int] = _pk()
+    upload_id: Mapped[int | None] = mapped_column(BIG_ID, ForeignKey("uploads.id"))
+    order_no: Mapped[str]
+    line_no: Mapped[int] = mapped_column(Integer)
+    order_date: Mapped[date]
+    ship_date: Mapped[date | None]
+    customer_code: Mapped[str]
+    item_code: Mapped[str]
+    qty: Mapped[Decimal]
+    unit_price: Mapped[Decimal | None]
+    created_at: Mapped[datetime] = _created_now()
+    created_by: Mapped[str]
+
+
 # =====================================================================================
 # LOGGING layer (continued)
 # =====================================================================================
@@ -756,5 +855,10 @@ APP_LAYER: tuple[str, ...] = (
     "app_customers",
     "shipments",
     "shipment_lines",
+    "uploads",
+    "upload_files",
+    "stock_counts",
+    "stock_count_lines",
+    "app_sales_lines",
 )
 LOGGING_LAYER: tuple[str, ...] = ("load_runs", "data_issues", "audit_log", "event_log", "request_log")

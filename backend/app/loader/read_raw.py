@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 from pathlib import Path
 
 from app.config.settings import REPO_ROOT
@@ -45,27 +46,66 @@ def row_hash(values: dict[str, str]) -> str:
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
 
-def read_raw_file(path: Path, logical_name: str) -> RawFile:
-    """Read one CSV into RawRecords without changing a single character of any value."""
-    content = path.read_bytes()
+# The columns each export must have (BlueTide's header row). An upload missing any of them is
+# refused before anything is checked or loaded: a wrong file in a slot would otherwise read every
+# missing column as "" and "load successfully", wiping good data (Phase 6 design review).
+REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
+    "items": ("item_code", "description", "category", "pack_size", "sell_uom", "vendor_code", "status"),
+    "inventory_on_hand": ("snapshot_date", "item_code", "location", "lot_no", "qty", "uom", "expiry_date"),
+    "sales_lines": ("order_no", "line_no", "order_date", "ship_date", "customer_code", "item_code", "qty",
+                    "uom", "unit_price", "status"),
+    "purchase_orders": ("po_no", "line_no", "vendor_code", "item_code", "order_date", "expected_date",
+                        "qty_ordered", "qty_received", "uom", "status"),
+    "vendors": ("vendor_code", "vendor_name", "country", "lead_time_days"),
+    "customers": ("customer_code", "customer_name", "customer_type"),
+    "price_list": ("item_code", "price_tier", "price", "uom"),
+}  # fmt: skip
+
+
+class RawFileError(ValueError):
+    """A file that can't be one of the BlueTide exports (wrong columns, empty, not text)."""
+
+
+def read_raw_bytes(content: bytes, file_name: str, logical_name: str, *, check: bool = False) -> RawFile:
+    """Read one CSV (as bytes, e.g. an upload) into RawRecords without changing any value.
+
+    `check=True` (uploads from the website) refuses a file without the export's columns, or with
+    no rows. The laptop loader reads the known working copies and doesn't need it.
+    """
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError as error:
+        raise RawFileError(f"{file_name} isn't a text CSV file (it couldn't be read as UTF-8).") from error
+    reader = csv.DictReader(io.StringIO(text, newline=""))
+    header = [h for h in (reader.fieldnames or []) if h]
+    required = REQUIRED_COLUMNS.get(logical_name, ())
+    missing = [c for c in required if c not in header]
+    if check and missing:
+        raise RawFileError(
+            f"{file_name} doesn't look like BlueTide's {logical_name.replace('_', ' ')} export: "
+            f"it has no {', '.join(missing)} column{'s' if len(missing) > 1 else ''}."
+        )
     records: list[RawRecord] = []
-    with path.open(newline="", encoding="utf-8-sig") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            values = {key: (value if value is not None else "") for key, value in row.items() if key}
-            records.append(
-                RawRecord(
-                    source=SourceRef(file=path.name, line=reader.line_num),
-                    data=values,
-                    row_hash=row_hash(values),
-                )
+    for row in reader:
+        values = {key: (value if value is not None else "") for key, value in row.items() if key}
+        records.append(
+            RawRecord(
+                source=SourceRef(file=file_name, line=reader.line_num), data=values, row_hash=row_hash(values)
             )
+        )
+    if check and not records:
+        raise RawFileError(f"{file_name} has a header but no rows.")
     return RawFile(
         logical_name=logical_name,
-        file_name=path.name,
+        file_name=file_name,
         sha256=hashlib.sha256(content).hexdigest(),
         records=tuple(records),
     )
+
+
+def read_raw_file(path: Path, logical_name: str) -> RawFile:
+    """Read one CSV into RawRecords without changing a single character of any value."""
+    return read_raw_bytes(path.read_bytes(), path.name, logical_name)
 
 
 def read_all_raw(raw_dir: Path = RAW_DIR) -> dict[str, RawFile]:
