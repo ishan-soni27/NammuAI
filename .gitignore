@@ -26,3 +26,7 @@ dist/
 .idea/
 .vscode/
 *.swp
+
+# Per-phase working screenshots (~36 MB, many of screens since cut). Kept locally, not in the repo; the
+# README's screenshots live in docs/images/ (Ishan, 2026-11-26).
+docs/screenshots/

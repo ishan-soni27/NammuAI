@@ -1527,3 +1527,21 @@ He asked two questions in the plan: (a) the instruction's wording; (b) the reten
 - **Ishan:** check Vercel → Settings → Environment Variables for `AS_OF_DATE` (see #37). Still unreported.
 - `docs/screenshots/` (per-phase screenshots) and `codebase.zip` are untracked and not committed.
 - After that: P1 items as Ishan chooses, or the review.
+
+## #38 | 2026-11-26 21:30 UTC | "It isn't there, do we need to commit the screenshots, you can commit. What do you mean by P1 work of choosing or review?"
+**Prompt (simplified):** `AS_OF_DATE` isn't set on Vercel. Should the screenshots be committed? What did "P1 work or
+the review" mean?
+**What changed:**
+- **Vercel confirmed clean:** no `AS_OF_DATE`, so "today" follows the data in production too (boundary 4). Nothing to
+  do. That closes #37's follow-up.
+- **`docs/screenshots/` is now in `.gitignore`, not committed:**
+  - it's 72 images, 36 MB, against a 7.8 MB repo history, and every Vercel deploy clones the repo;
+  - many show screens that were cut;
+  - the README's four screenshots are already committed in `docs/images/`.
+  - The prompt log already marks those folders "(not committed)".
+**Impact:** `git status` is clean. No app change.
+**Decisions made (and by whom):** Ishan left the screenshots to Claude; Claude chose to ignore them rather than commit
+them, offering a small before/after set for the review if wanted.
+**AI mistakes caught or corrected:** "P1 work of your choosing or the review" was jargon without explanation; it's now
+explained (P1 = the next-priority list in docs/PRIORITIES.md; the review = Nammu's live walkthrough).
+**Follow-ups:** Ishan picks: P1 items, review prep, or both.
