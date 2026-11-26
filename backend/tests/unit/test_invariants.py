@@ -40,13 +40,18 @@ def test_every_table_belongs_to_exactly_one_layer() -> None:
 # ---- ADR-015: RLS on every table --------------------------------------------------------
 
 
-def test_initial_migration_enables_rls_on_every_table() -> None:
-    path = BACKEND_DIR / "migrations" / "versions" / "0001_initial_schema.py"
-    spec = importlib.util.spec_from_file_location("migration_0001", path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    assert set(module.ALL_TABLES) == set(Base.metadata.tables) | {"alembic_version"}
+def test_migrations_enable_rls_on_every_table() -> None:
+    # Each migration lists the tables it creates in ALL_TABLES and enables RLS on them. Together
+    # they must cover every model table (plus Alembic's own), or a new table is exposed.
+    covered: set[str] = set()
+    for path in sorted((BACKEND_DIR / "migrations" / "versions").glob("[0-9][0-9][0-9][0-9]_*.py")):
+        spec = importlib.util.spec_from_file_location(f"migration_{path.stem}", path)
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert "ENABLE ROW LEVEL SECURITY" in path.read_text(), f"{path.name} enables no RLS"
+        covered |= set(module.ALL_TABLES)
+    assert covered == set(Base.metadata.tables) | {"alembic_version"}
 
 
 # ---- Invariant #1: business logic never reads the system clock -------------------------

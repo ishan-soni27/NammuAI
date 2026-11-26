@@ -148,12 +148,12 @@ def po_arrival(
     bluetide = line.expected_date_system
     real = line.order_date + timedelta(days=lead_time_days)
     candidate = max(bluetide, real) if bluetide else real
-    flags: list[str] = []
+    flags: list[str] = list(line.flags)
     if bluetide is not None and bluetide < as_of:
         flags.append("BlueTide date has passed")
     if bluetide is not None and candidate > bluetide:
         flags.append("BlueTide date is earlier than the real lead time allows")
-    reference = f"{line.po_no} line {line.line_no}"
+    reference = f"{'Your PO ' if line.source == 'app' else ''}{line.po_no} line {line.line_no}"
 
     if override is not None:
         return IncomingLine(

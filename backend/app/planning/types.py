@@ -107,6 +107,8 @@ class POLineInput:
     order_date: date
     expected_date_system: date | None  # BlueTide's date, often stale (T26)
     qty_remaining: float
+    source: Literal["bluetide", "app"] = "bluetide"  # "app" = a PO Dana created (ADR-027)
+    flags: tuple[str, ...] = ()  # from matching BlueTide and Dana's records (planning/records.py)
 
 
 @dataclass(frozen=True)

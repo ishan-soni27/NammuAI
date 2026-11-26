@@ -9,6 +9,11 @@ Two sources, one shape (PlanningInputs):
 
 Only REAL demand reaches the engine (§6.2: no transfers, samples, credits, cancellations, the
 cruise one-off or fresh), and only open PO lines with something still to come (T25).
+
+Dana's own records (Phase 6, ADR-027) join here too: suppliers and items she added (hers win on
+the same code), POs she created, lines she marked shipped or cancelled, and receipts. BlueTide's
+side and hers are matched by planning/records.py (rules R1-R6), so nothing is counted twice. With
+no BlueTide load at all, the plan is built from her records alone.
 """
 
 from __future__ import annotations
@@ -21,7 +26,16 @@ from sqlalchemy.orm import Session
 
 from app.config.business_rules import BusinessRules
 from app.db import models as m
+from app.loader.convert import to_sell_uom
 from app.loader.types import CleanDataset, VendorSettingSeed
+from app.planning.records import (
+    AppPOLine,
+    BlueTidePOLine,
+    LineStatusInput,
+    ReceiptInput,
+    Reconciled,
+    reconcile_pos,
+)
 from app.planning.types import (
     EtaOverrideInput,
     HandledNoteInput,
@@ -129,7 +143,31 @@ class LoadInfo:
     finished_at: datetime | None
 
 
-_clean_cache: dict[int, PlanningInputs] = {}  # latest load run id -> clean-layer inputs (size 1)
+@dataclass(frozen=True)
+class BlueTideFacts:
+    """What BlueTide says beyond the planning inputs, for matching Dana's records (ADR-027).
+
+    The planning inputs keep only open PO lines with something to come; matching also needs the
+    received, complete and cancelled ones, and which lots are in the stock count.
+    """
+
+    po_lines: tuple[BlueTidePOLine, ...]
+    snapshot_lots: frozenset[tuple[str, str, str]]  # (item, location, lot) in the stock count
+
+
+@dataclass(frozen=True)
+class PlanningContext:
+    """Everything one request needs: the engine inputs plus how Dana's records were matched."""
+
+    inputs: PlanningInputs
+    load: LoadInfo
+    reconciled: Reconciled
+    app_item_codes: frozenset[str]
+    app_vendor_codes: frozenset[str]
+
+
+# latest load run id -> (clean-layer inputs, BlueTide facts); size 1
+_clean_cache: dict[int, tuple[PlanningInputs, BlueTideFacts]] = {}
 
 
 def latest_load(session: Session) -> LoadInfo:
@@ -233,46 +271,177 @@ def _clean_inputs_from_db(session: Session) -> PlanningInputs:
     )
 
 
-def inputs_from_db(session: Session, rules: BusinessRules) -> tuple[PlanningInputs, LoadInfo]:
-    """Engine inputs: cached BlueTide data for the latest load + Dana's current edits."""
+def _bluetide_facts(session: Session) -> BlueTideFacts:
+    """Every BlueTide PO line in the item's selling unit, and the stock count's lot keys."""
+    units = {
+        i.item_code: (i.sell_uom, i.lb_per_case)
+        for i in session.execute(select(m.Item.item_code, m.Item.sell_uom, m.Item.lb_per_case)).all()
+    }
+    lines = []
+    for p in session.scalars(select(m.PurchaseOrderLine)).all():
+        sell_uom, lb = units.get(p.item_code, (p.uom, None))
+        ordered = to_sell_uom(p.qty_ordered, p.uom, sell_uom, lb)
+        received = to_sell_uom(p.qty_received, p.uom, sell_uom, lb)
+        lines.append(
+            BlueTidePOLine(
+                po_no=p.po_no,
+                line_no=p.line_no,
+                item_code=p.item_code,
+                vendor_code=p.vendor_code,
+                order_date=p.order_date,
+                expected_date_system=p.expected_date_system,
+                ordered=float(ordered) if ordered is not None else None,
+                received=float(received) if received is not None else 0.0,
+                remaining=(
+                    float(p.qty_remaining_sell_uom)
+                    if p.status == "open" and p.qty_remaining_sell_uom is not None
+                    else 0.0
+                ),
+                status=p.status,
+            )
+        )
+    lots = frozenset(
+        (x.item_code, x.location_code, x.lot_no)
+        for x in session.execute(
+            select(m.InventoryLot.item_code, m.InventoryLot.location_code, m.InventoryLot.lot_no)
+        ).all()
+    )
+    return BlueTideFacts(tuple(lines), lots)
+
+
+def _app_items(session: Session, clean: PlanningInputs) -> tuple[tuple[ItemInput, ...], frozenset[str]]:
+    """BlueTide's items plus Dana's; hers win on the same code (ADR-026)."""
+    by_code = {i.item_code: i for i in clean.items}
+    mine = session.scalars(select(m.AppItem)).all()
+    for a in mine:
+        bluetide = by_code.get(a.item_code)
+        if a.status == "discontinued":
+            lifecycle, reason = "discontinued", f"Marked discontinued by {a.updated_by}"
+        elif bluetide is not None:
+            lifecycle, reason = bluetide.lifecycle_status, bluetide.lifecycle_reason
+        else:
+            lifecycle, reason = "active", f"Added in the app by {a.created_by}"
+        by_code[a.item_code] = ItemInput(
+            a.item_code,
+            a.description,
+            a.category,
+            a.sell_uom,
+            float(a.lb_per_case) if a.lb_per_case is not None else None,
+            a.vendor_code,
+            lifecycle,
+            reason,
+        )
+    return tuple(by_code.values()), frozenset(a.item_code for a in mine)
+
+
+def _app_vendors(session: Session, clean: PlanningInputs) -> tuple[tuple[VendorInput, ...], frozenset[str]]:
+    by_code = {v.vendor_code: v for v in clean.vendors}
+    mine = session.scalars(select(m.AppVendor)).all()
+    for a in mine:
+        bluetide = by_code.get(a.vendor_code)
+        by_code[a.vendor_code] = VendorInput(
+            a.vendor_code, a.name, a.country, bluetide.lead_time_days_system if bluetide else None
+        )
+    return tuple(by_code.values()), frozenset(a.vendor_code for a in mine)
+
+
+def _reconcile(session: Session, facts: BlueTideFacts, load: LoadInfo) -> Reconciled:
+    """Dana's POs, line statuses and receipts, matched with BlueTide's (planning/records.py)."""
+    app_lines = [
+        AppPOLine(
+            po.po_no,
+            line.line_no,
+            line.item_code,
+            po.vendor_code,
+            po.order_date,
+            float(line.qty_ordered),
+            float(line.unit_cost) if line.unit_cost is not None else None,
+        )
+        for po, line in session.execute(
+            select(m.PurchaseOrder, m.PurchaseOrderLineApp).join(
+                m.PurchaseOrderLineApp, m.PurchaseOrderLineApp.po_id == m.PurchaseOrder.id
+            )
+        ).all()
+    ]
+    statuses = [
+        LineStatusInput(s.po_no, s.line_no, s.status, s.shipped_on, s.container_no, s.cancel_reason)  # type: ignore[arg-type]
+        for s in session.scalars(select(m.PoLineStatus)).all()
+    ]
+    movements = session.scalars(select(m.StockMovement).where(m.StockMovement.kind == "receipt")).all()
+    reversed_ids = {mv.reverses_id for mv in movements if mv.reverses_id is not None}
+    receipts = [
+        ReceiptInput(
+            mv.id,
+            mv.po_no or "",
+            mv.po_line_no or 0,
+            mv.item_code,
+            mv.location_code,
+            mv.lot_no,
+            float(mv.qty),
+            mv.expiry_date,
+            float(mv.unit_cost) if mv.unit_cost is not None else None,
+            mv.movement_date,
+        )
+        for mv in movements
+        if mv.reverses_id is None and mv.id not in reversed_ids and mv.po_no is not None
+    ]
+    return reconcile_pos(
+        facts.po_lines, app_lines, statuses, receipts, facts.snapshot_lots, load.snapshot_date
+    )
+
+
+def build_context(session: Session, rules: BusinessRules) -> PlanningContext:
+    """Engine inputs: cached BlueTide data for the latest load + Dana's current edits and records."""
     load = latest_load(session)
     key = load.load_run_id or 0
-    clean = _clean_cache.get(key)
-    if clean is None:
-        clean = _clean_inputs_from_db(session)
+    cached = _clean_cache.get(key)
+    if cached is None:
+        cached = (_clean_inputs_from_db(session), _bluetide_facts(session))
         _clean_cache.clear()
-        _clean_cache[key] = clean
+        _clean_cache[key] = cached
+    clean, facts = cached
     handled = session.scalars(select(m.HandledFlag).where(m.HandledFlag.cleared_at.is_(None))).all()
-    return (
-        replace(
-            clean,
-            vendor_settings=tuple(
-                VendorSettingInput(s.vendor_code, s.lead_time_days, s.safety_days, s.order_cycle_days)
-                for s in session.scalars(select(m.VendorSetting)).all()
-            ),
-            item_settings=tuple(
-                ItemSettingInput(s.item_code, s.lifecycle_override, s.safety_days_override)
-                for s in session.scalars(select(m.ItemSetting)).all()
-            ),
-            eta_overrides=tuple(
-                EtaOverrideInput(o.po_no, o.line_no, o.eta, o.updated_by)
-                for o in session.scalars(select(m.PoEtaOverride)).all()
-            ),
-            handled_notes=tuple(
-                # Notes are dated in BUSINESS time: "today" is AS_OF, never the clock (invariant #1).
-                HandledNoteInput(
-                    h.id,
-                    h.item_code,
-                    float(h.qty) if h.qty is not None else None,
-                    h.eta,
-                    h.note,
-                    rules.as_of_date,
-                )
-                for h in handled
-            ),
+    items, app_items = _app_items(session, clean)
+    vendors, app_vendors = _app_vendors(session, clean)
+    reconciled = _reconcile(session, facts, load)
+    inputs = replace(
+        clean,
+        items=items,
+        vendors=vendors,
+        lots=clean.lots + tuple(r.lot for r in reconciled.received_lots),
+        po_lines=reconciled.po_inputs,
+        vendor_settings=tuple(
+            VendorSettingInput(s.vendor_code, s.lead_time_days, s.safety_days, s.order_cycle_days)
+            for s in session.scalars(select(m.VendorSetting)).all()
         ),
-        load,
+        item_settings=tuple(
+            ItemSettingInput(s.item_code, s.lifecycle_override, s.safety_days_override)
+            for s in session.scalars(select(m.ItemSetting)).all()
+        ),
+        eta_overrides=tuple(
+            EtaOverrideInput(o.po_no, o.line_no, o.eta, o.updated_by)
+            for o in session.scalars(select(m.PoEtaOverride)).all()
+        ),
+        handled_notes=tuple(
+            # Notes are dated in BUSINESS time: "today" is AS_OF, never the clock (invariant #1).
+            HandledNoteInput(
+                h.id,
+                h.item_code,
+                float(h.qty) if h.qty is not None else None,
+                h.eta,
+                h.note,
+                rules.as_of_date,
+            )
+            for h in handled
+        ),
     )
+    return PlanningContext(inputs, load, reconciled, app_items, app_vendors)
+
+
+def inputs_from_db(session: Session, rules: BusinessRules) -> tuple[PlanningInputs, LoadInfo]:
+    """Engine inputs and the load they're based on (see build_context for the details)."""
+    context = build_context(session, rules)
+    return context.inputs, context.load
 
 
 def clear_cache() -> None:

@@ -6,9 +6,11 @@
     CLEAN    vendors, items, item_aliases, customers, locations, inventory_lots,
              sales_lines, purchase_order_lines, prices, stockout_periods, excluded_orders:
              BlueTide data after the T01–T31 rules. Rebuilt from scratch on every load.
-    APP      vendor_settings, item_settings, po_eta_overrides, handled_flags:
-             what Dana tells the tool. The loader NEVER truncates or deletes these
-             (invariant #5, ADR-008).
+    APP      vendor_settings, item_settings, po_eta_overrides, handled_flags: what Dana tells
+             the tool; and, since Phase 6 (ADR-026/027), her own records: app_vendors,
+             app_items, purchase_orders, purchase_order_lines_app, po_line_status,
+             stock_movements. The loader NEVER truncates or deletes these (invariant #5,
+             ADR-008). BlueTide is one optional source; the app plans from these alone too.
     LOGGING  load_runs, data_issues, audit_log, event_log, request_log (§10).
 
 Important design rule: APP-layer tables have NO foreign keys to CLEAN-layer tables.
@@ -90,6 +92,9 @@ ISSUE_SEVERITIES = ("info", "warning", "error")
 ISSUE_ACTIONS = ("excluded", "corrected", "flagged")
 LOAD_STATUSES = ("running", "succeeded", "failed")
 EVENT_SOURCES = ("api", "loader", "web")
+APP_ITEM_STATUSES = ("active", "discontinued")
+PO_LINE_STATUSES = ("shipped", "cancelled")  # "received" is never stored: it is worked out from receipts
+MOVEMENT_KINDS = ("receipt", "shipment", "sample", "move_out", "move_in", "adjustment")
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -443,6 +448,136 @@ class HandledFlag(Base):
     clear_reason: Mapped[str | None]
 
 
+# ---- Dana's own records (Phase 6; ADR-026, ADR-027) ---------------------------------------
+# Same rule as above: no foreign keys into the clean layer. Item, vendor and location codes are
+# plain text, checked by the service layer. Foreign keys between these app tables are fine.
+
+
+class AppVendor(Base):
+    """A supplier Dana added herself. Lead time and cushion live in vendor_settings, as for BlueTide's."""
+
+    __tablename__ = "app_vendors"
+
+    vendor_code: Mapped[str] = mapped_column(primary_key=True)
+    name: Mapped[str]
+    country: Mapped[str | None]
+    note: Mapped[str | None]
+    created_at: Mapped[datetime] = _created_now()
+    created_by: Mapped[str]
+    updated_at: Mapped[datetime] = _created_now()
+    updated_by: Mapped[str]
+
+
+class AppItem(Base):
+    """An item Dana added or edited. Where BlueTide has the same code, this record wins."""
+
+    __tablename__ = "app_items"
+    __table_args__ = (
+        CheckConstraint(_in("sell_uom", SELL_UOMS), name="sell_uom"),
+        CheckConstraint(_in("status", APP_ITEM_STATUSES), name="status"),
+        CheckConstraint("lb_per_case IS NULL OR lb_per_case > 0", name="lb_per_case_positive"),
+    )
+
+    item_code: Mapped[str] = mapped_column(primary_key=True)  # canonical: strip().upper()
+    description: Mapped[str]
+    category: Mapped[str]  # same words as BlueTide's categories, so seasonality is shared
+    sell_uom: Mapped[str]
+    lb_per_case: Mapped[Decimal | None]  # needed for case items (pounds <-> cases)
+    vendor_code: Mapped[str]
+    status: Mapped[str]
+    note: Mapped[str | None]
+    created_at: Mapped[datetime] = _created_now()
+    created_by: Mapped[str]
+    updated_at: Mapped[datetime] = _created_now()
+    updated_by: Mapped[str]
+
+
+class PurchaseOrder(Base):
+    """A PO Dana created in the app (not BlueTide's: those stay in purchase_order_lines)."""
+
+    __tablename__ = "purchase_orders"
+    __table_args__ = (UniqueConstraint("po_no"),)
+
+    id: Mapped[int] = _pk()
+    po_no: Mapped[str]
+    vendor_code: Mapped[str]
+    order_date: Mapped[date]
+    note: Mapped[str | None]
+    created_at: Mapped[datetime] = _created_now()
+    created_by: Mapped[str]
+    updated_at: Mapped[datetime] = _created_now()
+    updated_by: Mapped[str]
+
+
+class PurchaseOrderLineApp(Base):
+    """One line of a PO Dana created. Her expected date lives in po_eta_overrides (one date table, R1)."""
+
+    __tablename__ = "purchase_order_lines_app"
+    __table_args__ = (
+        UniqueConstraint("po_id", "line_no"),
+        CheckConstraint("qty_ordered > 0", name="qty_positive"),
+    )
+
+    id: Mapped[int] = _pk()
+    po_id: Mapped[int] = mapped_column(BIG_ID, ForeignKey("purchase_orders.id"))
+    line_no: Mapped[int] = mapped_column(Integer)
+    item_code: Mapped[str]
+    qty_ordered: Mapped[Decimal]  # in the item's selling unit
+    unit_cost: Mapped[Decimal | None]  # per selling unit
+
+
+class PoLineStatus(Base):
+    """Shipped or cancelled, for any PO line (BlueTide's or Dana's). Received is worked out from receipts."""
+
+    __tablename__ = "po_line_status"
+    __table_args__ = (
+        PrimaryKeyConstraint("po_no", "line_no"),
+        CheckConstraint(_in("status", PO_LINE_STATUSES), name="status"),
+    )
+
+    po_no: Mapped[str]
+    line_no: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str]
+    shipped_on: Mapped[date | None]
+    container_no: Mapped[str | None]
+    cancel_reason: Mapped[str | None]
+    note: Mapped[str | None]
+    updated_at: Mapped[datetime] = _created_now()
+    updated_by: Mapped[str]
+
+
+class StockMovement(Base):
+    """The stock ledger: every receipt, shipment, move and adjustment Dana records. Never edited.
+
+    Quantities are signed, in the item's selling unit (+ into the building, - out of it). Undo
+    writes a new row with `reverses_id` pointing at the original, so the history stays.
+    """
+
+    __tablename__ = "stock_movements"
+    __table_args__ = (
+        CheckConstraint(_in("kind", MOVEMENT_KINDS), name="kind"),
+        CheckConstraint("qty <> 0", name="qty_not_zero"),
+        Index("ix_stock_movements_item", "item_code"),
+        Index("ix_stock_movements_po_line", "po_no", "po_line_no"),
+    )
+
+    id: Mapped[int] = _pk()
+    movement_date: Mapped[date]  # business date (invariant #1)
+    kind: Mapped[str]
+    item_code: Mapped[str]
+    location_code: Mapped[str]
+    lot_no: Mapped[str]
+    qty: Mapped[Decimal]
+    expiry_date: Mapped[date | None]
+    unit_cost: Mapped[Decimal | None]  # per selling unit
+    po_no: Mapped[str | None]
+    po_line_no: Mapped[int | None] = mapped_column(Integer)
+    reverses_id: Mapped[int | None] = mapped_column(BIG_ID, ForeignKey("stock_movements.id"))
+    note: Mapped[str | None]
+    created_at: Mapped[datetime] = _created_now()
+    created_by: Mapped[str]
+
+
 # =====================================================================================
 # LOGGING layer (continued)
 # =====================================================================================
@@ -543,5 +678,16 @@ CLEAN_LAYER: tuple[str, ...] = (
     "stockout_periods",
     "excluded_orders",
 )
-APP_LAYER: tuple[str, ...] = ("vendor_settings", "item_settings", "po_eta_overrides", "handled_flags")
+APP_LAYER: tuple[str, ...] = (
+    "vendor_settings",
+    "item_settings",
+    "po_eta_overrides",
+    "handled_flags",
+    "app_vendors",
+    "app_items",
+    "purchase_orders",
+    "purchase_order_lines_app",
+    "po_line_status",
+    "stock_movements",
+)
 LOGGING_LAYER: tuple[str, ...] = ("load_runs", "data_issues", "audit_log", "event_log", "request_log")

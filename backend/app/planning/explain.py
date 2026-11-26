@@ -112,7 +112,10 @@ def explain(
     for line in incoming:
         assert line.eta is not None
         text = f"{line.reference}: {qty(line.qty, u)} arriving about {day(line.eta)}"
-        if line.bluetide_date and line.bluetide_date != line.eta:
+        if line.eta_source.startswith("Set by"):
+            said = f"BlueTide said {day(line.bluetide_date)}; " if line.bluetide_date else ""
+            text += f" ({said}date set by {line.eta_source.removeprefix('Set by ')})"
+        elif line.bluetide_date and line.bluetide_date != line.eta:
             text += f" (BlueTide said {day(line.bluetide_date)}; corrected to the real lead time)"
         parts.append(text)
     if parts:
@@ -120,7 +123,7 @@ def explain(
     else:
         steps.append("Nothing is on the way with a date.")
     for line in late:
-        said = f"BlueTide said {day(line.bluetide_date)}" if line.bluetide_date else "no date in BlueTide"
+        said = f"BlueTide said {day(line.bluetide_date)}" if line.bluetide_date else "no date given"
         steps.append(
             f"Late, date unknown: {line.reference}, {qty(line.qty, u)} ({said}, nothing received). "
             "Not counted until you enter a real date."
