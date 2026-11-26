@@ -5,7 +5,9 @@ Ishan owns every decision; "Claude proposed, Ishan approved" means the idea came
 
 > **Status (final docs phase, 2026-11-26):** every ADR is written out in full. ADR-001 to ADR-016 were pre-decided in
 > Ishan's planning chat (`BUILD_PROMPT.md` §4.2, §13.3) and filled in as the code that implements them landed. Where a
-> later decision overrode the spec (hosting, late POs, open orders, the app keeping its own records), the ADR says so.
+> later decision overrode the spec (hosting, late POs, open orders), the ADR says so. **ADR-032 (Ishan's scope review)
+> cut the record-keeping of ADR-026 to ADR-028 and narrowed ADR-029**: BlueTide stays the record, and the app is the
+> weekly planning layer. Those ADRs are kept, marked, so the history reads end to end.
 
 ## Index
 
@@ -36,12 +38,14 @@ Ishan owns every decision; "Claude proposed, Ishan approved" means the idea came
 | 023 | API tests | SQLite copy of the real data with the real writer; code stays Postgres-first |
 | 024 | Screens v1 | Display choices the frontend makes, and the browser checks |
 | 025 | Colours, dropdowns | Red, yellow, green, grey only; every item a dropdown; units spelled out |
-| 026 | Direction | The app becomes the main record for POs and shipments, and can stand alone |
-| 027 | Her POs | Her records matched with BlueTide's by document and quantity (R1–R6) |
-| 028 | Shipments, moves | A ledger of picks and moves, matched with BlueTide's orders (R7–R10) |
-| 029 | Imports | Upload, check, then load: BlueTide's files or her own templates |
+| 026 | Direction | ~~The app becomes the main record for POs and shipments~~ **Superseded by 032** |
+| 027 | Her POs | ~~Her records matched with BlueTide's (R1–R6)~~ **Superseded by 032** |
+| 028 | Shipments, moves | ~~A ledger of picks and moves (R7–R10)~~ **Superseded by 032** |
+| 029 | Imports | Upload, check, then load. **Narrowed by 032**: BlueTide's files only, every week |
 | 030 | Downloads | One CSV per list, built from the screens' own code |
 | 031 | Harbor cost | Her cases per pallet, pallets per lot, $30 per pallet per month, a saved table |
+| 032 | Scope | **BlueTide stays the record; the app is the weekly planning layer** (cut the record-keeping) |
+| 033 | The "why" | Numbers only, linked to source tables; one instruction for late-PO items; the chart writes off lost sales |
 
 ---
 
@@ -136,6 +140,9 @@ the planning engine. RLS with no policies blocks Supabase's public Data API (ADR
 
 ## ADR-003 Raw JSONB layer + clean tables + data_issues
 **Date:** 2026-11-25 · **Decided by:** Ishan, in planning (BUILD_PROMPT §8.3, §13.3)
+**Updated 2026-11-26 (ADR-032):** with weekly uploads, raw rows and data notes are kept for the newest 8 loads (A51),
+and each raw row records the load that first brought it in (`origin_load_run_id`), so carried-over sales lines stay
+traceable.
 
 **Context.** Every number on screen must trace back to a line in a BlueTide file ("it has to be right"). The exports
 hold 31 traps (DATA_AUDIT), so Dana and the reviewers will ask "where does this number come from, and what did you
@@ -511,6 +518,8 @@ still runs in about 0.2 s on the full exports. No extra dependency, so the loade
 
 ## ADR-020 One load = one transaction, raw rows kept per run, bulk writes with COPY
 **Date:** 2026-11-25 · **Decided by:** Claude (implementation of BUILD_PROMPT §10 layer 2)
+**Updated 2026-11-26 (ADR-032):** the same transaction now also merges sales history and prunes raw rows older than the
+newest 8 loads (A50, A51); "today" for a load is the day after its own stock count (A49).
 
 **Context.** A reload must never leave the database half-updated, and it must never touch Dana's edits (invariant #5). The
 first real loads exposed two practical problems with a home connection to Supabase (about 300 ms per round trip, about
@@ -699,7 +708,8 @@ difference. Details are one click away instead of on screen.
 covers that today, ADR-030).
 
 ## ADR-026 Direction: the app becomes the main record for POs and shipments
-**Date:** 2026-11-26 · **Decided by:** Ishan · **Status:** direction decided; built in Phase 6 (ADR-027 to ADR-030)
+**Date:** 2026-11-26 · **Decided by:** Ishan · **Status:** ~~direction decided; built in Phase 6 (ADR-027 to ADR-030)~~
+**Superseded by ADR-032 (2026-11-26):** BlueTide stays the record. The code is on `archive/system-of-record`.
 
 **Context.** Ishan: "This is an ERP system ... It is supposed to be a system that Dana can use for the future as well.
 She needs to be able to log and track stuff." The build so far only analyses one load of BlueTide exports, because
@@ -728,6 +738,8 @@ flags are needed. More to build and test. With "today" fixed at Nov 16, new reco
 ## ADR-027 Dana's own records, matched with BlueTide's by document and quantity (rules R1-R6)
 **Date:** 2026-11-26 · **Decided by:** Ishan (plan approved, with "independent of BlueTide"); design by Claude after
 a design review
+**Superseded by ADR-032 (2026-11-26):** the records and rules R1–R6 were cut (migration 0006). Archived on
+`archive/system-of-record`.
 
 **Context.** Phase 6 lets Dana keep her own records (ADR-026). The app must never count the same cases twice, must
 still work when BlueTide files keep coming, and (Ishan, on approval) must work with no BlueTide data at all.
@@ -774,6 +786,8 @@ for Dana, not settled silently.
 
 ## ADR-028 Orders going out and stock moves: a ledger of picks, matched with BlueTide's orders (R7-R10)
 **Date:** 2026-11-26 · **Decided by:** Ishan (Phase 6 plan, step 2 "go"); design by Claude
+**Superseded by ADR-032 (2026-11-26):** shipments, picks, moves and rules R7–R10 were cut (migration 0006). Archived
+on `archive/system-of-record`.
 
 **Context.** Step 2 of ADR-026: Dana logs orders going out (and samples), ships them, and moves stock
 between buildings (Harbor costs money every month). The plan must count each case once whether or not BlueTide
@@ -817,6 +831,12 @@ also has the order, and keep working with no BlueTide data.
 ## ADR-029 Imports from the website: check first, then load; BlueTide's files or Dana's own templates
 **Date:** 2026-11-26 · **Decided by:** Ishan (Phase 6 plan, step 3 "go"; "it should be able to be its own independent
 system"); design by Claude after the design review
+**Narrowed by ADR-032 (2026-11-26):**
+- BlueTide's files only; Dana's own templates were cut.
+- It's the weekly loop: each upload moves "today" to the day after its stock count, merges sales history, and keeps raw
+  rows for 8 loads.
+- The "stock count after today" blocker is gone; a same-night count warns.
+- The upload/check/load flow below is unchanged.
 
 **Context.** Dana must be able to bring in next week's BlueTide exports herself, or, for the app to stand without
 BlueTide, her own data. The deployed API can't see `data/` (its root is `backend/`), production's database
@@ -868,6 +888,9 @@ open customer orders aren't in the sales-history template (they're logged on the
 
 ## ADR-030 Download to Excel: one CSV per list, built from the screens' own code
 **Date:** 2026-11-26 · **Decided by:** Ishan (Phase 6 plan, step 4 "go"); details by Claude
+**Updated by ADR-032 (2026-11-26):** the shipments download went with the shipments. The PO download is now BlueTide's
+open lines as the On the way page shows them (our date, BlueTide's date, late). The Harbor table download (ADR-031)
+joined the list.
 
 **Context.** Dana works in Excel and forwards lists to people who don't use the app. She needs the order list, the
 stuck list, the POs, the shipments and the data notes as files.
@@ -951,3 +974,105 @@ are snapshots and don't follow later stock changes.
 
 **Revisit when.** Harbor's invoice shows a different pallet count (check the rule against it), a second paid warehouse
 appears (a rate per location), or someone can supply real pallet counts.
+
+## ADR-032 BlueTide stays the record; the app is the weekly planning layer
+**Date:** 2026-11-26 · **Decided by:** Ishan (scope review in claude.ai after Phase 6; prompt log #34–#36)
+
+**Context.**
+- **Phase 6 (ADR-026 to ADR-029) made the app a second system of record.** POs, receipts, shipments, picks, moves and
+  template imports were recorded in the app **and** in BlueTide.
+- That needed:
+  - matching rules R1–R10, so nothing was counted twice;
+  - 12 extra tables;
+  - assumptions A27–A45;
+  - double data entry for Dana's team, which nobody on the kickoff call asked for.
+- **Dana's real need** (call 00:01:10): her Monday spreadsheet, where she pulls BlueTide's reports into Excel and goes
+  line by line for half a day.
+
+**Decision.**
+- **BlueTide stays the system of record, and the app replaces the Monday spreadsheet.** The weekly loop:
+  1. Dana uploads the exports;
+  2. everything recalculates;
+  3. she looks at the two answers;
+  4. she adjusts what BlueTide doesn't know;
+  5. she orders, in BlueTide and by phone, as today.
+- **Six boundaries** (CLAUDE.md invariants):
+  1. BlueTide owns every fact (stock, sales, POs, receipts), from uploaded files only; the app never records a
+     transaction.
+  2. The app stores only Dana's knowledge (vendor settings, item settings including cases per pallet, PO dates,
+     handled notes, the Harbor table) and the logs (uploads, load runs, data notes, audit, events, requests).
+  3. Each upload refreshes BlueTide's data; sales lines accumulate (A50).
+  4. "Today" follows the data: the latest load's stock count + 1 day; `AS_OF_DATE` only overrides it (A49).
+  5. The math is deterministic, with no LLM anywhere; every number traces back to an uploaded row.
+  6. No order entry, receiving, shipping, stock moves, or adding customers, items or suppliers in the app.
+- **The cut, archived on tag `archive/system-of-record` (0796817):**
+  - **Code:** `planning/records.py`, `records_service`, `shipments_service`, `template_import` and the shipments
+    router.
+  - **Routes:** PO create/ship/cancel/receive/undo, `/locations`, item and supplier creation, `/import-templates`.
+  - **Tables:** 12, dropped by migration 0006 (on production they held only cancelled test records).
+  - **Screens:** New PO, Shipments, New order, Items, Move stock, Add a supplier, the template import.
+  - **What stays, read only:** an **On the way** page lists BlueTide's open PO lines, with "Set real date".
+- **Weekly uploads made right (step 3):** derived "today", handled notes dated in business time, accumulating sales,
+  raw-row retention (A49–A51), and season bands computed for any year.
+
+**Alternatives.**
+- (a) **Keep Phase 6 as built:** double data entry and ten matching rules for records BlueTide already has. Rejected.
+- (b) **Fully replace BlueTide:** rejected.
+  - BlueTide also runs Marco's order entry, accounting's credits, warehouse receiving and transfers, and invoicing.
+  - Replacing only part of that still leaves Kestrel Bay on two systems.
+  - Replacing all of it is an ERP migration.
+- (c) **A live BlueTide connection:** it has no known API. Weekly uploads of its exports are the honest interface.
+
+**Tradeoffs.**
+- POs, receipts and shipments are still entered once, in BlueTide.
+- The app is as fresh as the last upload (weekly). Between uploads, Dana's "I've handled this" note (with quantity and
+  date) says "I ordered this" until BlueTide shows the PO, and the note then offers to clear itself.
+- Raw rows older than 8 loads are pruned; summaries stay.
+- The cut removed 8,070 lines of code and tests and added 627 (commits 44ef859, eb7f15a), all kept on the archive
+  tag.
+
+**Revisit when.** **Kestrel Bay asks to retire BlueTide.** Then follow the README's "Roadmap off BlueTide":
+- purchasing first;
+- then sales and receiving;
+- BlueTide retired last;
+- each kind of record owned by exactly one system at a time.
+
+## ADR-033 The "why" as numbers, one instruction for late-PO items, a chart that writes off lost sales
+**Date:** 2026-11-26 · **Decided by:** Ishan (plan step 4, the instruction's wording); details by Claude
+
+**Context.**
+- **The sentences read like a memo.** Ishan checked they weren't pre-written for the demo items (#35: the only hit was
+  a colour code). They were shared templates filled from live numbers, but they still read like a memo.
+- **Two lines contradicted each other.** Items only a late PO would cover said "Order at least N" and also "if the late
+  PO shows up, you wouldn't need to order".
+- **The chart bug** (found reading `projection.build_scenario` while planning): the chart plotted the plain balance,
+  which carries sales lost during a stockout forward. So SHR-1620 showed about 218 cases when its 600-case PO lands,
+  instead of about 594.
+
+**Decision.**
+- **`explain.breakdown`:** rows {key, label, qty, unit, date, detail, link}, from the same values, only those that apply.
+  The rows are: can sell (by building), not counted, promised, each counted arrival (with BlueTide's date when
+  corrected), each late PO, selling per week, season ahead, runs out, new order lands, short (too late only), order at
+  least, and if the late PO arrives today.
+  - `link` is the item-page table with the source rows.
+  - It replaces `ItemDetailOut.explanation`.
+- **`explain.late_po_instruction`:** one sentence, computed once and shown on the Monday card and the item page.
+  - With something to order: "Order at least 127 cases, unless PO-260394 (800 cases) is really coming. Ask the supplier
+    for its date and set it here, and these numbers update."
+  - With nothing to order: "Nothing to order today, but … is late."
+  - With several late POs, it names them all.
+- **Monday cards** opened: short computed labels only, plus the instruction.
+- **The chart uses the floored balance;** run-out and status still come from the plain one.
+- **A reconciliation test on the real data:** can sell − promised (shipping by X) + counted arrivals (by X) − forecast
+  (through X) + lost sales (through X) = chart stock on X, for 5 items × 5 dates.
+
+**Alternatives.**
+- (a) **Keep the sentences:** rejected (a memo, and harder to check).
+- (b) **Compute the instruction in the browser:** rejected (two places to keep in step; the engine's is tested).
+- (c) **Keep the plain chart with a note:** rejected (it misstates what's on the shelf after a stockout).
+
+**Tradeoffs.**
+- Less narrative: Dana reads a table, and the labels link to the tables that explain them.
+- The can-sell note uses building codes (NB, PVD, HCS), because the pure engine has no names.
+
+**Revisit when.** Dana asks for words back, or the chat assistant (P2) explains from these rows.
