@@ -376,3 +376,39 @@ BlueTide for these ... the design should lean towards replacing BlueTide. The ap
 the BlueTide tables (the loader TRUNCATEs those). Where both have the same PO or order number, the app's record wins and
 the difference is flagged. Business "today" has to move forward with new data (a decision for Ishan in the Phase 6
 plan). The Harbor storage calculator (P1 #1) and the README / demo phase move after this work.
+
+## ADR-027 Dana's own records, matched with BlueTide's by document and quantity (rules R1-R6)
+**Date:** 2026-11-26 · **Decided by:** Ishan (plan approved, with "independent of BlueTide"); design by Claude after
+a design review
+
+**Context.** Phase 6 lets Dana keep her own records (ADR-026). The app must never count the same cases twice, must
+still work when BlueTide files keep coming, and (Ishan, on approval) must work with no BlueTide data at all.
+
+**Decision.**
+- **App-layer tables** (migration 0002, RLS on, no foreign keys into BlueTide's tables, never truncated by the loader):
+  `app_vendors`, `app_items` (her copy wins on the same code), `purchase_orders` + `purchase_order_lines_app` (POs she
+  creates), `po_line_status` (shipped or cancelled, for any line), `stock_movements` (a ledger: receipts now; shipments,
+  moves and adjustments in step 2). Undo writes a reversing row; nothing is edited or deleted.
+- **One date table:** her expected date for any line (hers or BlueTide's) lives in `po_eta_overrides` (R1).
+- **Matching by document and quantity, not date** (`planning/records.py`, pure). BlueTide's `qty_received` has no date,
+  so "ignore anything before BlueTide's stock count" would miscount (design review).
+  - R2: the same PO in both is matched by PO + line, else PO + item; counted once; her quantity wins.
+  - R3: received = max(hers, BlueTide's); only the part BlueTide hasn't seen becomes stock, newest receipts first.
+  - R4 (Ishan): BlueTide says received or closed while she still expects more: not counted; flagged.
+  - R5: BlueTide says cancelled: not counted; flagged.
+  - R6: a lot already in a BlueTide count dated on or after the receipt is not added again.
+- **The engine is unchanged.** `services/planning_inputs.build_context` hands it ordinary inputs: PO lines still to
+  come (with a source and flags) and lots she received. BlueTide's full PO lines and the stock count's lot keys are
+  cached per load (`BlueTideFacts`).
+- **Independent of BlueTide.** Her items and suppliers join BlueTide's; a test plans an item from her records alone
+  (`test_the_plan_works_from_danas_records_alone_with_no_bluetide_data`).
+
+**Verified.** All 201 earlier tests unchanged (BlueTide-only numbers identical); 23 rule tests and 17 API tests added;
+`alembic check` against Supabase after the upgrade: no drift; RLS on every table.
+
+**Known limits (next steps).**
+- Buildings (`locations`) still come from the reference seeds through a load; with no load at all there are no
+  buildings to receive into. Step 3 (import) fixes this.
+- A new item has no sales history until step 2 (shipments) or step 3 (her sales history upload), so it shows as
+  "no recent sales" until then.
+- An app PO does not revive a dormant BlueTide item (dormant is set at load time).

@@ -37,6 +37,13 @@ Confirmed by Dana (date) · Decided by Ishan (date) · Assumption (not asked; ou
 | A24 | "Covered only by a late PO" | Tested against the best case: the late PO arrives today. If that turns an item from red/amber to fine, it's flagged | Dana Q3 + Ishan | `planning/engine.py` | Assumption |
 | A25 | Handled note dated in the past | Counted as arriving today and flagged ("your date has passed"); Dana clears it when it lands | Not asked | `planning/supply.py` | Assumption |
 | A26 | Category seasonality across units | Case items are converted to pounds (verified pack sizes) before a category's months are compared, so pound items don't swamp case items | BUILD_PROMPT §6.7 refinement | `planning/seasonality.py` | Assumption (Claude, flagged to Ishan) |
+| A27 | BlueTide says a PO line was cancelled, the app still expects it (R5) | Not counted as coming; flagged "check with the supplier" | Phase 6 plan, approved by Ishan 2026-11-26 | `planning/records.py` | Approved with the plan |
+| A28 | A received lot already appears in a BlueTide stock count dated on/after the receipt (R6) | Not added again; the receipt shows "Not added again: already in BlueTide's stock count" | Phase 6 plan, approved by Ishan 2026-11-26 | `planning/records.py` | Approved with the plan |
+| A29 | Receipts BlueTide also counted (R3) | Received = the larger of Dana's receipts and BlueTide's qty_received; only the part BlueTide hasn't seen becomes stock, newest receipts first | Design review 2026-11-26 (BlueTide's qty_received has no date) | `planning/records.py` | Approved with the plan |
+| A30 | Receipts need an expiry date; receipt dates can't be after today, expected dates can't be before it | Enforced by the API with plain-English messages (the six-month line needs the expiry) | Phase 6 plan | `services/records_service.py` | Approved with the plan |
+| A31 | PO numbers when Dana leaves the number blank | `KB-00001`, `KB-00002`, ... (`business_rules.app_po_prefix`), never clashing with BlueTide's `PO-...` | Phase 6 plan | `services/records_service.py` | Approved with the plan |
+| A32 | Expected date when Dana leaves it blank | Order date + the supplier's time to arrive (her number in Suppliers). A computed date already in the past is refused: she types the real one | Phase 6 plan; Dana Q3 (don't assume dates) | `services/records_service.py` | Approved with the plan |
+| A33 | Case items Dana adds | Pounds per case are required (seasonality compares a category's items in pounds, A26) | Claude, Phase 6 | `services/records_service.py` | Assumption (flagged to Ishan) |
 
 ## Notes for explaining these in the review
 - **Why conservative?** Every default above leans toward ordering a little early: the upper end of the lead-time range,

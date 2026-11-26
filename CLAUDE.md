@@ -30,7 +30,9 @@ including tiny prompts, no-op prompts and prompts where you made a mistake. Log 
    All cleaning happens in code, and every change is logged to `data_issues`.
 3. **Business numbers live only in `backend/app/config/business_rules.py` and `data/reference/*.csv`.** No magic numbers elsewhere.
 4. **No hard-coded item, order, customer or vendor codes in logic.** Use seeds (`data/reference/`) or customer_type/vendor_type.
-5. **The loader never truncates app-layer tables** (`vendor_settings`, `item_settings`, `po_eta_overrides`, `handled_flags`).
+5. **The loader never truncates app-layer tables** (`vendor_settings`, `item_settings`, `po_eta_overrides`, `handled_flags`,
+   and Dana's own records since Phase 6: `app_vendors`, `app_items`, `purchase_orders`, `purchase_order_lines_app`,
+   `po_line_status`, `stock_movements`). They never get foreign keys into BlueTide's tables (`APP_LAYER` in models.py).
    Vendor settings seeds are inserted only if missing.
 6. Read raw CSVs as strings (`dtype=str, keep_default_na=False`). They are CRLF. Use `Decimal`/numeric for quantities and money, and `date` for business dates.
 7. Trap IDs (T01–T31) and golden facts (G01–G17) appear in code comments, test names and `docs/DATA_AUDIT.md`.
@@ -45,10 +47,13 @@ data/raw/bluetide_*.csv      working copies of the 7 BlueTide exports (loader re
 data/reference/*.csv         human-maintained seeds (pack sizes, lead times, locations, stockouts, excluded orders)
 backend/app/config/          settings.py (env), business_rules.py (ALL tunable numbers)
 backend/app/loader/          one-time CSV load: read_raw → rules (T01..T31) → normalize/classify/convert → write → report
-backend/app/planning/        PURE engine (no DB/clock/I/O): seasonality, demand, supply, projection, ordering, stuck, explain
-backend/app/services/        planning_inputs (DB → engine inputs, cached per load), planning_service, presenters (→ DTOs),
+backend/app/planning/        PURE engine (no DB/clock/I/O): seasonality, demand, supply, projection, ordering, stuck, explain,
+                             records (Dana's records matched with BlueTide's: rules R1-R6, ADR-027)
+backend/app/services/        planning_inputs (DB → engine inputs: BlueTide cached per load + Dana's records fresh),
+                             records_service (POs, receipts, items, suppliers), planning_service, presenters (→ DTOs),
                              audit (audit rows in the same transaction, request_log, event_log)
-backend/app/api/v1/          routers: health, items (dashboard/drill-down/handled/settings), suppliers (vendors, PO dates),
+backend/app/api/v1/          routers: health, items (dashboard/drill-down/handled/settings/new items), suppliers (vendors,
+                             new suppliers, PO dates), purchase_orders (list, create, ship, cancel, receive, undo, locations),
                              activity (data notes, audit, events, load runs, settings); schemas.py; docs at /api/v1/docs
 backend/tests/               unit/ (per trap), golden/ (real data, G01–G17), api/
 frontend/src/                api/ (client, types mirroring schemas.py, queries.ts = one hook per endpoint + edits)
@@ -105,6 +110,8 @@ python3 scripts/profile_data.py
 | "Show a new number on the dashboard" | Engine output (`planning/types.py`) → DTO (`api/v1/schemas.py`) → component |
 | "Export to Excel/CSV" | New endpoint reusing `planning_service`, plus a button |
 | "Different cushion for one item" | `item_settings.safety_days_override` (already supported) |
+| "Add a field to a PO" or "a new PO status" | Model + migration (app layer), `planning/records.py` if it changes what's counted, `services/records_service.py`, `PORow.tsx` |
+| "Count a BlueTide receipt differently" | The R1-R6 rules in `planning/records.py` (one test per rule in `tests/unit/planning/test_records.py`) |
 | "Filter by vendor or category" | Frontend only. The dashboard already returns vendor and category |
 | "Harbor cost per month" | Add pallet rate to `locations` and cases-per-pallet to `pack_sizes.csv`, then compute in `planning/stuck.py` |
 
@@ -131,6 +138,9 @@ Each row should be a small, tested change. If one isn't, refactor it in Phase 6.
 - **The app is becoming the system of record (Ishan, 2026-11-26, ADR-026):** it should eventually replace BlueTide.
   Dana must be able to log and track her own work: POs (through to received), outgoing shipments, uploads of new
   BlueTide files, and CSV downloads. Where BlueTide and the app both have a record, the app's is the main one.
-  BUILD_PROMPT §11 listed "creating POs" and "live BlueTide loading" as P2; this overrides it. Phase 6 plan pending "go".
+  BUILD_PROMPT §11 listed "creating POs" and "live BlueTide loading" as P2; this overrides it. Phase 6 plan approved
+  2026-11-26 with Ishan's amendment: **the app must also work fully independently of BlueTide** (Dana's own items,
+  suppliers, stock counts, POs and sales, typed in or uploaded from the app's own templates). Today stays fixed at
+  Nov 16; BlueTide's receipt beats an open app line (R4); steps POs → shipments → import → CSV, stop after each.
 - **One Vercel project hosts both the website and the API** (Vercel Services), not Render + Vercel (2026-11-25, ADR-002).
   BUILD_PROMPT §8.1/§15 still say Render; this overrides it.

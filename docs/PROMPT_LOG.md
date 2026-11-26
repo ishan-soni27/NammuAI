@@ -656,10 +656,81 @@ shipments, BlueTide uploads, CSV downloads).
 (`planning/supply.py`), how inputs are built (`services/planning_inputs.py`), the loader writer (TRUNCATE of the clean
 tables), the app tables, the AS_OF setting and the deploy config. It then wrote the Phase 6 plan in plan mode for
 Ishan's approval. This entry is updated when the plan is approved or changed.
-**Impact:** Plan only.
-**Decisions made (and by whom):** Pending Ishan: how business "today" moves, the order of the steps, and the rule for
-when BlueTide and the app disagree about whether a PO has arrived.
+**Impact:** Plan only. A design review (a planning agent reading the code) found six blockers in the first draft,
+which the plan fixed:
+- a date cut-off would miscount, because BlueTide's qty_received has no date (matching by document and quantity instead);
+- the reference seeds aren't deployed with the API;
+- COPY doesn't work through the production pooler;
+- one-file uploads need checks;
+- the RLS test only read migration 0001;
+- the cache can't answer the matching questions.
+
+**Decisions made (and by whom):** Ishan (four questions): today stays fixed at Nov 16 and switches later; BlueTide's
+receipt wins over an open app line; steps POs → shipments → upload → CSV; stop after each. Plan approved (see #26).
 **AI mistakes caught or corrected:** Claude's earlier recommendation (prompt #24) was "today = the day after the newest
 BlueTide snapshot". That breaks once the app replaces BlueTide: with no more uploads, "today" would never move. The
 plan corrects it.
 **Follow-ups:** Approval of the plan.
+
+## #26 | 2026-11-26 12:40 UTC | Plan approved: "use auto mode ... it should be able to be its own independent system"
+**Prompt (simplified):** Yes, go ahead in auto mode. But the system must not depend on BlueTide: it should work as its
+own independent system, where Dana uploads her own information and the system calculates with it.
+**What changed (step 6.1, POs; plus independence foundations):**
+- The plan was amended (independence): BlueTide becomes one optional source, Dana's items and suppliers are added in
+  the app, and step 3 becomes "Import" (BlueTide's files or her own templates).
+- **Migration 0002** (applied to Supabase; `alembic check`: no drift; RLS on every table): `app_vendors`, `app_items`,
+  `purchase_orders`, `purchase_order_lines_app`, `po_line_status`, `stock_movements`.
+- **`planning/records.py`** (pure): rules R1–R6 match her records with BlueTide's by document and quantity.
+  `planning_inputs.build_context` caches BlueTide facts per load and merges her items, suppliers, POs and receipts.
+  The engine is unchanged.
+- **API:**
+  - `/purchase-orders` (list, create, ship, cancel, reopen, receive), `/stock-movements/{id}/undo`, `/locations`;
+  - `POST /vendors`, `POST /items`, `PATCH /items/{code}/details`, `GET /item-details`;
+  - PO dates work for her own lines;
+  - the item page shows received lots;
+  - the handled-note hint sees her POs.
+- **Screens:** Purchase orders (dropdown rows; receive, ship, date, cancel, reopen, undo), New PO (prefilled from
+  "Create a PO" on Monday and on the item page), Items (add and edit), Suppliers (was Lead times; add a supplier).
+- Docs: ADR-027, A27–A33, CLAUDE.md (invariant 5, code map, playbook, decisions), PRIORITIES (P0 #10 done).
+**Impact:**
+- **Checks:**
+  - 241 backend tests pass: the 201 earlier ones unchanged, 23 rule tests, 17 API tests;
+  - ruff, build, lint and format are clean; the raw files are unchanged.
+- **Browser checks, local and live:** every page at 1280 px and 375 px with no errors and no sideways scrolling.
+- **Local click-through:**
+  - "Create a PO" from the SHR-1620 row → KB-00001, counted as on the way;
+  - receive 150 into New Bedford (stock +150), then undo;
+  - mark shipped, then cancel;
+  - add supplier Gloucester Fillet Co. and item KB-COD6, then a PO for it (counted).
+- **Live:**
+  - the earlier click-through passes;
+  - the PO check (create, receive 150, undo, ship, cancel) passes, labelled "Claude (live click-through)";
+  - the live Monday numbers are back to the start (3 / 6 / 5 / 16, 0 handled, 3 late POs);
+  - the test PO stays as **KB-00001, cancelled**, so Dana's first real PO will be KB-00002.
+- Screenshots: `docs/screenshots/phase6-step1/` (not committed).
+**Decisions made (and by whom):**
+- Ishan: approved the plan and its proposed defaults; added "independent of BlueTide"; auto mode.
+- Claude:
+  - case items need pounds per case (A33);
+  - a computed expected date already in the past is refused (A32);
+  - auto numbers KB-00001 and so on (A31);
+  - the supplier code is made from the name.
+**AI mistakes caught or corrected:**
+- **The first draft's date cut-off rule was wrong** (caught by the design review): BlueTide's receipts have no date.
+- **The first PO status logic was tangled.** Claude rewrote it into one rule per branch before testing.
+- **Two R4 tests expected the wrong thing:**
+  - if BlueTide shows a line fully received, the app expects nothing more, so there's no conflict;
+  - the flag Dana needs is "BlueTide shows N received that isn't recorded here", which was added.
+- **One API test had the arithmetic wrong.** The app was right: 600 + 250 still to come.
+- **A file edit stopped halfway:** a second replacement targeted text the first had already removed. Nothing was
+  written; Claude re-ran it.
+- **Click-through script bugs:**
+  - helpers were passed the page instead of an element;
+  - the live run waited for a 4-second success message on a slow connection.
+  The app worked both times (the server returned 201); the live check was finished by waiting for the server's reply.
+**Follow-ups:**
+- **Step 6.2** (shipments and moving stock) is waiting for "go".
+- Known limits (ADR-027):
+  - buildings still come from a load;
+  - new items have no sales history until step 2 or 3;
+  - an app PO doesn't revive a dormant BlueTide item.
