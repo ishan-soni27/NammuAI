@@ -277,7 +277,7 @@ def build_context(session: Session, rules: BusinessRules) -> PlanningContext:
                 float(h.qty) if h.qty is not None else None,
                 h.eta,
                 h.note,
-                rules.as_of_date,
+                h.created_on or rules.as_of_date,  # null only for notes written before migration 0007
             )
             for h in handled
         ),

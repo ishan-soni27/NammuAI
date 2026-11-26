@@ -33,7 +33,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass, field, fields, replace
-from datetime import date
+from datetime import date, timedelta
 from functools import lru_cache
 from typing import Any
 
@@ -60,9 +60,12 @@ class BusinessRules:
     # ---- Dates -------------------------------------------------------------------------
     as_of_date: date = _rule(
         date(2026, 11, 16),
-        doc="The date the tool treats as 'today' for run-out, expiry and lead times.",
-        source="Assignment README: 'Treat Monday, November 16, 2026 as today.' "
-        "Overridable with the AS_OF_DATE env var. Never the computer's clock.",
+        doc="The date the tool treats as 'today' for run-out, expiry and lead times. It follows the "
+        "data: the day after the latest BlueTide stock count that was loaded. This value is only the "
+        "fallback before any load.",
+        source="Ishan 2026-11-26 (ADR-032): 'today follows the data'. Assignment README: 'Treat "
+        "Monday, November 16, 2026 as today' (the day after the Nov 15 count). AS_OF_DATE in the "
+        "environment overrides it for tests and live demos. Never the computer's clock.",
     )
 
     # ---- Stuck with (§6.11) ------------------------------------------------------------
@@ -265,17 +268,15 @@ class BusinessRules:
         source="Dana 00:01:10: 'Every Monday.' (A13)",
     )
 
-    # ---- Season markers on the item chart (§9.1) -------------------------------------------
-    season_markers: tuple[tuple[str, date, date], ...] = _rule(
-        (
-            ("Christmas", date(2026, 12, 25), date(2026, 12, 25)),
-            ("Lent 2027", date(2027, 2, 10), date(2027, 3, 28)),
-        ),
-        doc="Busy seasons drawn on the item chart: (label, first day, last day). Display only; the "
-        "forecast learns seasonality from last year's sales, not from these dates.",
-        source="BUILD_PROMPT §9.1 (Christmas and Lent 2027 shaded) and §3.8: Lent 2027 runs from "
-        "Ash Wednesday Feb 10 to Easter Mar 28. Dana 00:07:55: 'Lent is huge ... the holidays are crab, "
-        "shrimp and lobster tails.'",
+    # ---- Weekly uploads (ADR-032) ----------------------------------------------------------
+    raw_rows_keep_loads: int = _rule(
+        8,
+        unit="loads",
+        doc="How many loads keep their raw rows and data notes (and their uploaded file bytes). Older "
+        "loads keep only their summary. Each load stores about 16,500 raw rows (~9 MB), so keeping all "
+        "of them would fill the free database within a year of weekly uploads.",
+        source="Ishan 2026-11-26 (step 3, default 8 confirmed with the plan). Measured: 47 MB of raw "
+        "rows for 5 loads.",
     )
 
     # ---- Validation bounds for Dana's edits (§8.5) --------------------------------------
@@ -324,5 +325,24 @@ class BusinessRules:
 
 @lru_cache
 def get_business_rules() -> BusinessRules:
-    """The rules for this process: the defaults above plus the AS_OF_DATE from the environment."""
-    return replace(BusinessRules(), as_of_date=get_settings().as_of_date)
+    """The rules with no data to go on: the AS_OF_DATE override if set, else the fallback date.
+
+    The API's requests and every load use rules_for_snapshot instead, so "today" follows the data.
+    """
+    override = get_settings().as_of_date
+    return replace(BusinessRules(), as_of_date=override) if override else BusinessRules()
+
+
+@lru_cache(maxsize=16)
+def rules_for_snapshot(snapshot_date: date | None) -> BusinessRules:
+    """The rules for data whose BlueTide stock count is dated `snapshot_date` (ADR-032).
+
+    "Today" = the day after the count (the count is taken overnight; Monday plans from Sunday's
+    count). The AS_OF_DATE override wins if set; with no count at all, the fallback is used.
+    Cached per snapshot date, so in practice once per load.
+    Example: snapshot 2026-11-15 -> today 2026-11-16.
+    """
+    base = get_business_rules()
+    if get_settings().as_of_date or snapshot_date is None:
+        return base
+    return replace(base, as_of_date=snapshot_date + timedelta(days=1))

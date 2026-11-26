@@ -26,16 +26,18 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.api.v1 import schemas as s
-from app.config.business_rules import BusinessRules
+from app.config.business_rules import rules_for_snapshot
 from app.config.settings import get_settings
 from app.db import models as m
 from app.db.sql import utc_now
 from app.errors import AppError
-from app.loader.pipeline import build_dataset
+from app.loader.accumulate import SalesMerge, merge_sales
+from app.loader.history import raw_file_from_run
+from app.loader.pipeline import build_dataset, snapshot_date_of
 from app.loader.read_raw import RAW_FILES, RawFileError, read_raw_bytes
 from app.loader.reference import REFERENCE_DIR, load_reference_from_texts, reference_texts
 from app.loader.report import TRAP_TITLES
-from app.loader.types import LoadResult, RawFile, RawRecord, SourceRef
+from app.loader.types import LoadResult, RawFile
 from app.loader.write import fail_load_run, start_load_run, write_load
 from app.planning.explain import day
 from app.services.audit import current_actor, record_change
@@ -185,29 +187,11 @@ def _last_run(db: Session) -> m.LoadRun | None:
     ).first()
 
 
-def _raw_from_run(db: Session, run: m.LoadRun, slot: str, file_name: str) -> RawFile | None:
-    """The file a previous load read, rebuilt from its raw rows (values exactly as exported)."""
-    meta = next((f for f in run.files or [] if f.get("name") == file_name), None)
-    if meta is None:
-        return None
-    rows = db.execute(
-        select(m.RawRow.source_line_number, m.RawRow.data, m.RawRow.row_hash)
-        .where(m.RawRow.load_run_id == run.id, m.RawRow.source_file == file_name)
-        .order_by(m.RawRow.source_line_number)
-    ).all()
-    records = tuple(
-        RawRecord(
-            source=SourceRef(file=file_name, line=line), data={k: str(v) for k, v in data.items()}, row_hash=h
-        )
-        for line, data, h in rows
-    )
-    return RawFile(logical_name=slot, file_name=file_name, sha256=meta.get("sha256", ""), records=records)
-
-
 def _assemble(
     db: Session, up: m.Upload
-) -> tuple[dict[str, RawFile], list[dict[str, Any]], dict[str, str] | None, list[str]]:
-    """The seven files to load (uploaded, or the last load's), the seeds, and anything blocking."""
+) -> tuple[dict[str, RawFile], list[dict[str, Any]], dict[str, str] | None, list[str], SalesMerge | None]:
+    """The seven files to load (uploaded, or the last load's), the seeds, anything blocking, and how
+    the uploaded sales file merged with the sales history (ADR-032: sales accumulate)."""
     last = _last_run(db)
     uploaded = {
         f.slot: f for f in db.scalars(select(m.UploadFile).where(m.UploadFile.upload_id == up.id)).all()
@@ -215,13 +199,25 @@ def _assemble(
     raw: dict[str, RawFile] = {}
     files: list[dict[str, Any]] = []
     blockers: list[str] = []
+    sales: SalesMerge | None = None
     for slot, name in RAW_FILES.items():
         previous = next((f for f in (last.files if last else []) or [] if f.get("name") == name), None)
+        if slot in uploaded and uploaded[slot].content is None:
+            blockers.append(
+                f"{BLUETIDE_LABELS[slot]}: this upload is old and its file was cleared to save space. "
+                "Start a new upload."
+            )
+            continue
         if slot in uploaded:
-            raw[slot] = read_raw_bytes(uploaded[slot].content, name, slot, check=True)
+            raw[slot] = read_raw_bytes(uploaded[slot].content or b"", name, slot, check=True)
             source = "uploaded"
+            if slot == "sales_lines":
+                # Sales accumulate: this week's file wins line by line; older lines it no longer lists
+                # are kept from the history the last load stored.
+                history = raw_file_from_run(db, last.id, last.files, slot, name) if last else None
+                raw[slot], sales = merge_sales(raw[slot], history)
         else:
-            reused = _raw_from_run(db, last, slot, name) if last else None
+            reused = raw_file_from_run(db, last.id, last.files, slot, name) if last else None
             if reused is None:
                 blockers.append(f"{BLUETIDE_LABELS[slot]}: no file, and no earlier load to reuse. Upload it.")
                 continue
@@ -245,7 +241,7 @@ def _assemble(
             "The reference seeds (buildings, pack sizes, lead-time seeds) aren't stored yet. "
             "Run the loader once from a laptop (python -m app.loader.run)."
         )
-    return raw, files, texts, blockers
+    return raw, files, texts, blockers, sales
 
 
 def _notes_on_dropped_items(db: Session, result: LoadResult) -> list[str]:
@@ -277,27 +273,46 @@ def _current_counts(db: Session) -> dict[str, int]:
     }
 
 
-def _check_bluetide(db: Session, rules: BusinessRules, up: m.Upload) -> dict[str, Any]:
-    raw, files, texts, blockers = _assemble(db, up)
+def _check_bluetide(db: Session, up: m.Upload) -> dict[str, Any]:
+    raw, files, texts, blockers, sales = _assemble(db, up)
     report: dict[str, Any] = {"kind": "bluetide", "files": files, "blockers": blockers, "warnings": []}
     if blockers:
         return report
     assert texts is not None
+    # "Today" for these files is the day after their stock count (ADR-032): expiry, late POs and
+    # dormant items are judged as of then, not as of the last load.
+    rules = rules_for_snapshot(snapshot_date_of(raw))
     result = build_dataset(raw, load_reference_from_texts(texts), rules)
     d = result.dataset
     last = _last_run(db)
     current = (last.summary or {}).get("snapshot_date") if last else None
-    if d.snapshot_date > rules.as_of_date:
-        blockers.append(
-            f"The stock count in these files is dated {day(d.snapshot_date)}, "
-            f"after today ({day(rules.as_of_date)}). "
-            "The checks for expiry and late POs use today, so this can't be loaded yet."
-        )
+    report["today"] = rules.as_of_date.isoformat()
     if current and d.snapshot_date.isoformat() < current:
         blockers.append(
             f"The stock count in these files ({day(d.snapshot_date)}) is older than the one loaded now "
             f"({current}). Loading it would go back in time."
         )
+    elif current and d.snapshot_date.isoformat() == current:
+        report["warnings"].append(
+            "The stock count in these files is the same night as the one loaded now "
+            f"({day(d.snapshot_date)}). Fine if BlueTide was exported again; otherwise check you "
+            "exported last night's report."
+        )
+    if sales is not None:
+        months = sales.months_of_history(d.snapshot_date)
+        report["sales"] = {
+            "new": sales.new,
+            "updated": sales.updated,
+            "unchanged": sales.unchanged,
+            "kept": sales.kept,
+            "months_of_history": round(months, 1),
+        }
+        history_days = (d.snapshot_date - sales.first_order_date).days if sales.first_order_date else 0
+        if history_days < rules.seasonal_window_days:  # the season pattern learns from a full year (§6.7)
+            report["warnings"].append(
+                f"Only {months:.1f} months of sales history in total. The season pattern needs a full "
+                "year, so the seasonal adjustment will be weaker until more weeks are uploaded."
+            )
     for f in files:
         prev = f["previous_rows"]
         if prev and f["rows"] < prev * 0.5:
@@ -348,7 +363,7 @@ def _check_bluetide(db: Session, rules: BusinessRules, up: m.Upload) -> dict[str
     return report
 
 
-def check(db: Session, rules: BusinessRules, upload_id: int) -> s.ImportOut:
+def check(db: Session, upload_id: int) -> s.ImportOut:
     """The dry run: nothing is written except this report."""
     up = _get(db, upload_id)
     if up.status not in ("open", "checked"):
@@ -357,7 +372,7 @@ def check(db: Session, rules: BusinessRules, upload_id: int) -> s.ImportOut:
     if not has_files:
         raise AppError(422, "no_files", "Upload at least one file first.")
     try:
-        report = _check_bluetide(db, rules, up)
+        report = _check_bluetide(db, up)
     except RawFileError as error:
         raise AppError(422, "wrong_file", str(error)) from error
     up.report = report
@@ -378,23 +393,31 @@ def _fail_stale_runs(db: Session) -> None:
     )
 
 
-def load(db: Session, rules: BusinessRules, upload_id: int, confirm_code: str) -> s.ImportOut:
+def load(db: Session, upload_id: int, confirm_code: str) -> s.ImportOut:
     up = _get(db, upload_id)
     if up.status != "checked" or not up.confirm_code:
         raise AppError(409, "not_checked", "Check the files first (and fix anything that blocks the load).")
     if not secrets.compare_digest(confirm_code, up.confirm_code):
         raise AppError(422, "wrong_code", "That confirmation code doesn't match this import's check.")
     _fail_stale_runs(db)
-    raw, _, texts, blockers = _assemble(db, up)
+    raw, _, texts, blockers, _ = _assemble(db, up)
     if blockers or not texts:
         raise AppError(409, "blocked", "Something changed since the check. Check the files again.")
     reference = load_reference_from_texts(texts)
+    rules = rules_for_snapshot(snapshot_date_of(raw))  # "today" = the day after these files' stock count
     result = build_dataset(raw, reference, rules)
     engine = db.get_bind()
     db.commit()  # the load runs in its own single transaction (loader/write.py)
     run_id = start_load_run(engine, result, rules, get_settings().git_commit or "web import", texts)  # type: ignore[arg-type]
     try:
-        written = write_load(engine, run_id, result, reference.vendor_settings, use_copy=False)  # type: ignore[arg-type]
+        written = write_load(
+            engine,  # type: ignore[arg-type]
+            run_id,
+            result,
+            reference.vendor_settings,
+            use_copy=False,
+            keep_loads=rules.raw_rows_keep_loads,
+        )
     except Exception as error:
         fail_load_run(engine, run_id, error)  # type: ignore[arg-type]
         up = _get(db, upload_id)

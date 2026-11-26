@@ -16,8 +16,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.deps import request_rules
 from app.api.v1 import schemas as s
-from app.config.business_rules import BusinessRules, get_business_rules
+from app.config.business_rules import BusinessRules
 from app.db import models as m
 from app.db.session import get_db
 from app.db.sql import utc_now
@@ -82,7 +83,7 @@ def update_vendor(
     vendor_code: str,
     body: s.VendorPatchIn,
     db: Session = Depends(get_db),
-    rules: BusinessRules = Depends(get_business_rules),
+    rules: BusinessRules = Depends(request_rules),
 ) -> s.VendorOut:
     """Dana's real numbers. Only the fields sent change. Days must be within the limits in business_rules."""
     code = vendor_code.strip().upper()
@@ -132,7 +133,7 @@ def set_po_arrival(
     line_no: int,
     body: s.PoEtaPatchIn,
     db: Session = Depends(get_db),
-    rules: BusinessRules = Depends(get_business_rules),
+    rules: BusinessRules = Depends(request_rules),
 ) -> s.PoEtaOut:
     """The email promised Dana she could type in a real arrival date for late POs (Q3). Null clears it."""
     # BlueTide's PO line, as the latest upload has it (the clean layer). Only an open line with

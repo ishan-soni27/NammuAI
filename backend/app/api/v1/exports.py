@@ -13,7 +13,8 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from app.config.business_rules import BusinessRules, get_business_rules
+from app.api.deps import request_rules
+from app.config.business_rules import BusinessRules
 from app.db.session import get_db
 from app.errors import AppError
 from app.services.export_service import EXPORTS
@@ -23,7 +24,7 @@ router = APIRouter(tags=["Download to Excel"])
 
 @router.get("/exports/{name}.csv", response_class=Response)
 def export_csv(
-    name: str, db: Session = Depends(get_db), rules: BusinessRules = Depends(get_business_rules)
+    name: str, db: Session = Depends(get_db), rules: BusinessRules = Depends(request_rules)
 ) -> Response:
     build = EXPORTS.get(name)
     if build is None:

@@ -2,8 +2,8 @@
 
 Purpose
     One typed place for everything that differs between a laptop, Vercel and the test
-    suite: the database URL, CORS origins, log level and the business "today"
-    (AS_OF_DATE). Values come from environment variables or `backend/.env`.
+    suite: the database URL, CORS origins, log level and an optional override of the business
+    "today" (AS_OF_DATE). Values come from environment variables or `backend/.env`.
 
 How it fits
     `get_settings()` is cached and used by `main.py`, `db/session.py`, the loader CLI and
@@ -12,9 +12,10 @@ How it fits
     business works*.
 
 Key decisions
-    - AS_OF_DATE defaults to 2026-11-16 (the assignment README: "Treat Monday, November 16,
-      2026 as today"). Code must never call `date.today()` for business logic
-      (BUILD_PROMPT invariant #1).
+    - "Today" follows the data (ADR-032): the latest load's BlueTide stock count + 1 day, worked
+      out in business_rules.rules_for_snapshot. AS_OF_DATE is only an explicit override, for
+      tests and live demos; blank or unset = follow the data. Code must never call
+      `date.today()` for business logic (BUILD_PROMPT invariant #1).
     - Supabase hands out `postgresql://` URLs. SQLAlchemy needs `postgresql+psycopg://` to
       pick the psycopg 3 driver, so we normalize it here rather than make Ishan edit the
       string by hand (a classic "works locally, broken in production" trap).
@@ -52,8 +53,8 @@ class Settings(BaseSettings):
     # db = "not_configured", so a missing secret is visible instead of a crash loop.
     database_url: str = ""
 
-    # Business "today". See module docstring.
-    as_of_date: date = date(2026, 11, 16)
+    # Override of the business "today" (blank = follow the data). See module docstring.
+    as_of_date: date | None = None
 
     # Comma-separated in the environment, e.g. "https://kestrel.vercel.app,http://localhost:5173".
     cors_origins: str = "http://localhost:5173"
@@ -69,6 +70,12 @@ class Settings(BaseSettings):
 
     # Vercel sets VERCEL=1 inside its functions. We use it to size the DB pool (see db/session.py).
     vercel: str = ""
+
+    @field_validator("as_of_date", mode="before")
+    @classmethod
+    def _blank_means_follow_the_data(cls, value: object) -> object:
+        """AS_OF_DATE= (blank) is the same as not set: "today" follows the latest load."""
+        return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("database_url")
     @classmethod

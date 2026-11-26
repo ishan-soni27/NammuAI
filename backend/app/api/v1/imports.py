@@ -17,7 +17,6 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.v1 import schemas as s
-from app.config.business_rules import BusinessRules, get_business_rules
 from app.db.session import get_db
 from app.services import import_service as svc
 
@@ -53,10 +52,9 @@ async def put_file(
 
 
 @router.post("/imports/{upload_id}/check", response_model=s.ImportOut)
-def check_import(
-    upload_id: int, db: Session = Depends(get_db), rules: BusinessRules = Depends(get_business_rules)
-) -> s.ImportOut:
-    return svc.check(db, rules, upload_id)
+def check_import(upload_id: int, db: Session = Depends(get_db)) -> s.ImportOut:
+    """The dry run. "Today" for the check is the day after the uploaded files' stock count (ADR-032)."""
+    return svc.check(db, upload_id)
 
 
 @router.post("/imports/{upload_id}/load", response_model=s.ImportOut)
@@ -64,9 +62,8 @@ def load_import(
     upload_id: int,
     body: s.ImportLoadIn,
     db: Session = Depends(get_db),
-    rules: BusinessRules = Depends(get_business_rules),
 ) -> s.ImportOut:
-    return svc.load(db, rules, upload_id, body.confirm_code)
+    return svc.load(db, upload_id, body.confirm_code)
 
 
 @router.delete("/imports/{upload_id}", response_model=s.ImportOut)

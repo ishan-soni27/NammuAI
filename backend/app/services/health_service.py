@@ -21,10 +21,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 from sqlalchemy.exc import ProgrammingError, SQLAlchemyError
 
 from app.db.models import LoadRun
@@ -40,6 +40,7 @@ class DatabaseHealth:
     db: DbState
     schema_ready: bool  # False until `alembic upgrade head` has run
     last_load_at: datetime | None  # finish time of the latest successful load run
+    snapshot_date: date | None = None  # its BlueTide stock count date ("today" is the day after)
 
 
 def check_database() -> DatabaseHealth:
@@ -53,9 +54,12 @@ def check_database() -> DatabaseHealth:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
             try:
-                last_load_at = conn.execute(
-                    select(func.max(LoadRun.finished_at)).where(LoadRun.status == "succeeded")
-                ).scalar_one_or_none()
+                latest = conn.execute(
+                    select(LoadRun.finished_at, LoadRun.summary)
+                    .where(LoadRun.status == "succeeded")
+                    .order_by(LoadRun.id.desc())
+                    .limit(1)
+                ).first()
             except ProgrammingError:
                 # Connected, but the tables don't exist yet (migrations not run).
                 logger.warning("database reachable but schema missing; run `alembic upgrade head`")
@@ -64,4 +68,12 @@ def check_database() -> DatabaseHealth:
         logger.warning("database check failed", exc_info=True)
         return DatabaseHealth(db="down", schema_ready=False, last_load_at=None)
 
-    return DatabaseHealth(db="ok", schema_ready=True, last_load_at=last_load_at)
+    if latest is None:
+        return DatabaseHealth(db="ok", schema_ready=True, last_load_at=None)
+    snapshot = (latest.summary or {}).get("snapshot_date")
+    return DatabaseHealth(
+        db="ok",
+        schema_ready=True,
+        last_load_at=latest.finished_at,
+        snapshot_date=date.fromisoformat(snapshot) if snapshot else None,
+    )

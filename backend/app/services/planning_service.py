@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -23,7 +23,7 @@ from app.config.business_rules import BusinessRules
 from app.db import models as m
 from app.errors import AppError
 from app.loader.normalize import canonical_code
-from app.planning.calendar import add_months
+from app.planning.calendar import add_months, season_markers
 from app.planning.engine import plan
 from app.planning.stuck import TAG_ORDER, lot_tags
 from app.planning.supply import lot_status
@@ -66,16 +66,23 @@ def handled_notes_by_item(session: Session, rules: BusinessRules) -> dict[str, s
     ).all()
     if not flags:
         return {}
-    # A note is written "today" in business time (AS_OF). A newer open PO for the same item means
-    # BlueTide caught up: suggest clearing the note, never auto-delete it.
-    newer_pos: dict[str, list[str]] = {}
+    # A note is dated in business time (the AS_OF it was written on). An open BlueTide PO for the
+    # same item ordered on or after that day means BlueTide caught up: suggest clearing the note,
+    # never auto-delete it.
+    open_pos: dict[str, list[tuple[date, str]]] = {}
     for po in session.scalars(
         select(m.PurchaseOrderLine).where(
-            m.PurchaseOrderLine.status == "open", m.PurchaseOrderLine.order_date >= rules.as_of_date
+            m.PurchaseOrderLine.status == "open",
+            m.PurchaseOrderLine.item_code.in_({f.item_code for f in flags}),
         )
     ).all():
-        newer_pos.setdefault(po.item_code, []).append(po.po_no)
-    return {f.item_code: presenters.handled_out(f, newer_pos.get(f.item_code)) for f in flags}
+        open_pos.setdefault(po.item_code, []).append((po.order_date, po.po_no))
+
+    def newer(flag: m.HandledFlag) -> list[str]:
+        written = flag.created_on or rules.as_of_date
+        return sorted({po_no for ordered, po_no in open_pos.get(flag.item_code, []) if ordered >= written})
+
+    return {f.item_code: presenters.handled_out(f, newer(f)) for f in flags}
 
 
 def dashboard(session: Session, rules: BusinessRules) -> s.DashboardOut:
@@ -229,7 +236,10 @@ def item_detail(session: Session, rules: BusinessRules, raw_code: str) -> s.Item
         ),
         handled_notes=[presenters.handled_out(f) for f in flags],
         season_markers=[
-            s.SeasonMarkerOut(label=label, start=start, end=end) for label, start, end in rules.season_markers
+            s.SeasonMarkerOut(label=label, start=start, end=end)
+            for label, start, end in season_markers(
+                as_of, as_of + timedelta(days=rules.projection_horizon_days)
+            )
         ],
     )
 

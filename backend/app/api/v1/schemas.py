@@ -33,7 +33,13 @@ class HealthResponse(BaseModel):
     )
     db: Literal["ok", "down", "not_configured"]
     schema_ready: bool = Field(description="False until database migrations have been run.")
-    as_of: date = Field(description="The business 'today' (AS_OF_DATE), never the server clock.")
+    as_of: date = Field(
+        description="The business 'today': the day after the latest BlueTide stock count (AS_OF_DATE "
+        "overrides it), never the server clock."
+    )
+    snapshot_date: date | None = Field(
+        default=None, description="The date of BlueTide's stock count in the latest load (null before one)."
+    )
     last_load_at: datetime | None = Field(
         description="When BlueTide data was last loaded successfully (UTC). Null before the first load."
     )

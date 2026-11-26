@@ -77,3 +77,25 @@ def test_database_url_uses_psycopg3_driver(raw: str, expected: str) -> None:
 def test_cors_origins_are_split_and_trailing_slashes_removed() -> None:
     s = Settings(cors_origins="https://kestrel.vercel.app/, http://localhost:5173 ,")
     assert s.cors_origin_list == ["https://kestrel.vercel.app", "http://localhost:5173"]
+
+
+# ---- "Today" follows the data (ADR-032) ----------------------------------------------------------
+
+
+def test_today_is_the_day_after_the_stock_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config.business_rules import rules_for_snapshot
+
+    monkeypatch.setenv("AS_OF_DATE", "")  # blank = follow the data
+    clear_config_caches()
+    assert rules_for_snapshot(date(2026, 11, 15)).as_of_date == date(2026, 11, 16)
+    assert rules_for_snapshot(date(2026, 11, 22)).as_of_date == date(2026, 11, 23)
+    assert rules_for_snapshot(None).as_of_date == date(2026, 11, 16)  # no load yet: the fallback
+
+
+def test_the_env_override_wins_over_the_data(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config.business_rules import rules_for_snapshot
+
+    monkeypatch.setenv("AS_OF_DATE", "2027-01-04")
+    clear_config_caches()
+    assert rules_for_snapshot(date(2026, 11, 15)).as_of_date == date(2027, 1, 4)
+    assert rules_for_snapshot(None).as_of_date == date(2027, 1, 4)

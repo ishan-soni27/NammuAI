@@ -15,10 +15,16 @@ facts in BUILD_PROMPT §5.3 directly on this output without touching a database.
 from __future__ import annotations
 
 from collections import Counter
+from datetime import date
 
 from app.config.business_rules import BusinessRules
 from app.loader import rules as R
 from app.loader.types import CleanDataset, FileStats, IssueLog, LoadResult, RawFile, ReferenceData
+
+
+def snapshot_date_of(raw: dict[str, RawFile]) -> date:
+    """The BlueTide stock count these files are from; "today" for the load is the day after (ADR-032)."""
+    return R.latest_snapshot(raw["inventory_on_hand"])
 
 
 def build_dataset(raw: dict[str, RawFile], ref: ReferenceData, business_rules: BusinessRules) -> LoadResult:

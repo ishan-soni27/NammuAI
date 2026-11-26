@@ -563,6 +563,19 @@ def build_locations(ref: ReferenceData) -> list[CleanLocation]:
 # ---- On hand (T01, T02, T05, T10, T11, T12, T13, T14, T31) --------------------------------
 
 
+def latest_snapshot(raw: RawFile) -> date:
+    """The newest stock count in the on-hand file (T01: the file holds two nights; the latest counts).
+
+    "Today" is the day after it (business_rules.rules_for_snapshot), so a load can work out its own
+    business date before any other rule runs.
+    """
+    latest_text = max(record.get("snapshot_date").strip() for record in raw.records)
+    latest = parse_business_date(latest_text)[0]
+    if latest is None:
+        raise ValueError(f"The stock file's snapshot date {latest_text!r} isn't a date.")
+    return latest
+
+
 def build_lots(
     raw: RawFile,
     items: dict[str, ItemDraft],
@@ -577,8 +590,7 @@ def build_lots(
     for record in raw.records:
         snapshots[record.get("snapshot_date").strip()].append(record)
     latest_text = max(snapshots)
-    latest = parse_business_date(latest_text)[0]
-    assert latest is not None
+    latest = latest_snapshot(raw)
 
     # T01: the file holds two nights; only the latest counts. Summing both ~doubles stock.
     for snapshot_text, records in sorted(snapshots.items()):

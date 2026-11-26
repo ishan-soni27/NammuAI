@@ -20,8 +20,9 @@ from decimal import Decimal
 from fastapi import APIRouter, Body, Depends
 from sqlalchemy.orm import Session
 
+from app.api.deps import request_rules
 from app.api.v1 import schemas as s
-from app.config.business_rules import BusinessRules, get_business_rules
+from app.config.business_rules import BusinessRules
 from app.db import models as m
 from app.db.session import get_db
 from app.db.sql import utc_now
@@ -34,7 +35,7 @@ router = APIRouter(tags=["Monday screen and items"])
 
 @router.get("/dashboard", response_model=s.DashboardOut)
 def get_dashboard(
-    db: Session = Depends(get_db), rules: BusinessRules = Depends(get_business_rules)
+    db: Session = Depends(get_db), rules: BusinessRules = Depends(request_rules)
 ) -> s.DashboardOut:
     """What will run out before a new order can arrive, and what you're stuck with."""
     return planning_service.dashboard(db, rules)
@@ -42,14 +43,14 @@ def get_dashboard(
 
 @router.get("/items", response_model=list[s.ItemCard])
 def list_items(
-    db: Session = Depends(get_db), rules: BusinessRules = Depends(get_business_rules)
+    db: Session = Depends(get_db), rules: BusinessRules = Depends(request_rules)
 ) -> list[s.ItemCard]:
     return planning_service.all_items(db, rules)
 
 
 @router.get("/items/{item_code}", response_model=s.ItemDetailOut)
 def get_item(
-    item_code: str, db: Session = Depends(get_db), rules: BusinessRules = Depends(get_business_rules)
+    item_code: str, db: Session = Depends(get_db), rules: BusinessRules = Depends(request_rules)
 ) -> s.ItemDetailOut:
     return planning_service.item_detail(db, rules, item_code)
 
@@ -71,7 +72,7 @@ def mark_handled(
     item_code: str,
     body: s.HandledIn,
     db: Session = Depends(get_db),
-    rules: BusinessRules = Depends(get_business_rules),
+    rules: BusinessRules = Depends(request_rules),
 ) -> s.HandledNoteOut:
     """Dana: "I want to be able to tell it 'I've handled this one'" (00:09:45, §6.10).
 
@@ -88,6 +89,7 @@ def mark_handled(
         qty=Decimal(str(body.qty)) if body.qty is not None else None,
         eta=body.eta,
         note=body.note,
+        created_on=rules.as_of_date,  # business day, so "BlueTide now shows PO-x" compares like with like
         created_by=current_actor(),
     )
     db.add(flag)
@@ -140,7 +142,7 @@ def update_item_settings(
     item_code: str,
     body: s.ItemSettingsPatchIn,
     db: Session = Depends(get_db),
-    rules: BusinessRules = Depends(get_business_rules),
+    rules: BusinessRules = Depends(request_rules),
 ) -> s.ItemSettingsOut:
     """Per-item overrides: "this item is still active" (revive a dormant item), or its own cushion."""
     code = planning_service.resolve_item_code(db, item_code)

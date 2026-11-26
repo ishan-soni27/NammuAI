@@ -28,11 +28,11 @@ import time
 from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from typing import Any
 
 from psycopg.types.json import Jsonb
-from sqlalchemy import Connection, Engine, Table, func, insert, select, text, update
+from sqlalchemy import Connection, Engine, Table, and_, delete, func, insert, or_, select, text, update
 
 from app.config.business_rules import BusinessRules
 from app.db.models import (
@@ -51,6 +51,8 @@ from app.db.models import (
     RawRow,
     SalesLine,
     StockoutPeriod,
+    Upload,
+    UploadFile,
     Vendor,
     VendorSetting,
 )
@@ -87,6 +89,7 @@ class WriteSummary:
     issues: int
     vendor_settings_seeded: list[str]
     vendor_settings_kept: list[str]
+    pruned_load_runs: list[int] = field(default_factory=list)  # loads whose raw rows were cleared
 
 
 @contextmanager
@@ -123,7 +126,14 @@ def _copy_rows(conn: Connection, table: Table, rows: list[dict[str, Any]], use_c
             copy.write_row([Jsonb(row[c]) if isinstance(row[c], dict | list) else row[c] for c in columns])
 
 
-def _row(obj: Any, raw_ids: dict[tuple[str, int], int] | None = None) -> dict[str, Any]:
+RawKey = tuple[str, int, int | None]  # (file, line, origin load: None = this load's upload)
+
+
+def _raw_key(source: SourceRef) -> RawKey:
+    return source.file, source.line, source.origin
+
+
+def _row(obj: Any, raw_ids: dict[RawKey, int] | None = None) -> dict[str, Any]:
     """Dataclass -> insert dict. `source` becomes `raw_row_id` (traceability, ADR-003)."""
     out: dict[str, Any] = {}
     for f in fields(obj):
@@ -132,7 +142,7 @@ def _row(obj: Any, raw_ids: dict[tuple[str, int], int] | None = None) -> dict[st
         # "source" (where the fact came from), which must be stored as is.
         if isinstance(value, SourceRef):
             if raw_ids is not None:
-                out["raw_row_id"] = raw_ids.get((value.file, value.line))
+                out["raw_row_id"] = raw_ids.get(_raw_key(value))
             continue
         out[f.name] = value
     return out
@@ -203,11 +213,15 @@ def write_load(
     vendor_seeds: tuple[VendorSettingSeed, ...],
     *,
     use_copy: bool = True,
+    keep_loads: int | None = None,
 ) -> WriteSummary:
     """Write everything for one load in a single transaction (see module docstring).
 
     `vendor_seeds` come from data/reference/vendor_settings_seed.csv and are inserted only for
     vendors with no vendor_settings row yet, so Dana's edits survive every reload.
+    `keep_loads` (business_rules.raw_rows_keep_loads): keep raw rows and data notes for only the
+    newest N successful loads, this one included, and clear older uploads' file bytes. Load-run
+    summaries are kept forever. None = keep everything (tests, local previews).
     """
     d = result.dataset
     with engine.begin() as conn:
@@ -223,6 +237,8 @@ def write_load(
                 "load_run_id": run_id,
                 "source_file": r.source.file,
                 "source_line_number": r.source.line,
+                # Carried-over rows keep the load they first came in with (sales history, reused files).
+                "origin_load_run_id": r.source.origin or run_id,
                 "data": r.data,
                 "row_hash": r.row_hash,
             }
@@ -233,11 +249,17 @@ def write_load(
         with _timed("raw_rows"):
             _copy_rows(conn, raw_table, raw_rows, use_copy)
             returned = conn.execute(
-                select(raw_table.c.id, raw_table.c.source_file, raw_table.c.source_line_number).where(
-                    raw_table.c.load_run_id == run_id
-                )
+                select(
+                    raw_table.c.id,
+                    raw_table.c.source_file,
+                    raw_table.c.source_line_number,
+                    raw_table.c.origin_load_run_id,
+                ).where(raw_table.c.load_run_id == run_id)
             ).all()
-        raw_ids = {(file, line): row_id for row_id, file, line in returned}
+        raw_ids: dict[RawKey, int] = {
+            (file, line, None if origin == run_id else origin): row_id
+            for row_id, file, line, origin in returned
+        }
 
         # 2. Clean layer: rebuilt from scratch (explicit list, no CASCADE; see module docstring).
         if conn.dialect.name == "postgresql":
@@ -288,9 +310,14 @@ def write_load(
         issue_rows = [
             {
                 "load_run_id": run_id,
-                "source_file": i.source.file if i.source else GENERAL_SOURCE,
+                # A row carried over from an earlier upload names that load, so its line is findable.
+                "source_file": (
+                    (f"{i.source.file} (load #{i.source.origin})" if i.source.origin else i.source.file)
+                    if i.source
+                    else GENERAL_SOURCE
+                ),
                 "source_line_number": i.source.line if i.source else None,
-                "raw_row_id": raw_ids.get((i.source.file, i.source.line)) if i.source else None,
+                "raw_row_id": raw_ids.get(_raw_key(i.source)) if i.source else None,
                 "trap_id": i.trap_id,
                 "rule_code": i.rule_code,
                 "severity": i.severity,
@@ -316,6 +343,9 @@ def write_load(
         if clean_counts != expected:
             raise RuntimeError(f"row counts don't reconcile: database {clean_counts} vs pipeline {expected}")
 
+        # 6. Retention: raw rows and data notes for only the newest N loads (storage stays bounded).
+        pruned = _prune(conn, run_id, keep_loads) if keep_loads else []
+
         summary = WriteSummary(
             load_run_id=run_id,
             raw_rows=len(raw_rows),
@@ -323,6 +353,7 @@ def write_load(
             issues=len(issue_rows),
             vendor_settings_seeded=[s.vendor_code for s in to_seed],
             vendor_settings_kept=sorted(code for code in seeds if code in existing),
+            pruned_load_runs=pruned,
         )
         conn.execute(
             update(LoadRun.__table__)
@@ -340,6 +371,60 @@ def write_load(
     return summary
 
 
+def _prune(conn: Connection, run_id: int, keep_loads: int) -> list[int]:
+    """Delete data notes, then raw rows, of loads older than the newest `keep_loads` (this one counts).
+
+    Runs inside the load's transaction: if the load fails, nothing is pruned. The clean layer was just
+    rebuilt from THIS load's raw rows, so nothing points at the rows removed. Uploads whose load fell out
+    (and old uploads that never loaded) lose their file bytes but keep name, sha256 and row count.
+    """
+    runs = LoadRun.__table__
+    keep = list(
+        conn.execute(
+            select(runs.c.id)
+            .where(or_(runs.c.status == "succeeded", runs.c.id == run_id))
+            .order_by(runs.c.id.desc())
+            .limit(keep_loads)
+        ).scalars()
+    )
+    old = sorted(
+        conn.execute(
+            select(RawRow.__table__.c.load_run_id)
+            .where(RawRow.__table__.c.load_run_id.not_in(keep))
+            .distinct()
+        ).scalars()
+    )
+    if old:
+        conn.execute(delete(DataIssue.__table__).where(DataIssue.__table__.c.load_run_id.in_(old)))
+        conn.execute(delete(RawRow.__table__).where(RawRow.__table__.c.load_run_id.in_(old)))
+    oldest_kept = min(keep)
+    uploads = Upload.__table__
+    first_kept_upload = _first_upload_of(conn, oldest_kept)
+    stale = select(uploads.c.id).where(
+        or_(
+            and_(uploads.c.load_run_id.is_not(None), uploads.c.load_run_id < oldest_kept),
+            # Never loaded (discarded, or left open), and older than the oldest load kept.
+            and_(uploads.c.load_run_id.is_(None), uploads.c.id < first_kept_upload),
+        )
+    )
+    conn.execute(
+        update(UploadFile.__table__)
+        .where(UploadFile.__table__.c.upload_id.in_(stale), UploadFile.__table__.c.content.is_not(None))
+        .values(content=None)
+    )
+    if old:
+        logger.info("pruned old raw rows", extra={"load_runs": old, "kept": keep})
+    return old
+
+
+def _first_upload_of(conn: Connection, load_run_id: int) -> int:
+    """The id of the upload that made this load (or 0 if it came from the laptop): older uploads are stale."""
+    found = conn.execute(
+        select(Upload.__table__.c.id).where(Upload.__table__.c.load_run_id == load_run_id)
+    ).scalar_one_or_none()
+    return int(found) if found is not None else 0
+
+
 def _summary_json(result: LoadResult, summary: WriteSummary) -> dict[str, Any]:
     """JSON-safe summary stored on load_runs (shown on the Activity page)."""
     by_trap = Counter(i.trap_id or "row_error" for i in result.issues)
@@ -352,4 +437,5 @@ def _summary_json(result: LoadResult, summary: WriteSummary) -> dict[str, Any]:
         "errors": sum(1 for i in result.issues if i.severity == "error"),
         "vendor_settings_seeded": summary.vendor_settings_seeded,
         "vendor_settings_kept": summary.vendor_settings_kept,
+        "pruned_load_runs": list(summary.pruned_load_runs),
     }

@@ -59,3 +59,28 @@ def test_add_months() -> None:
     assert add_months(date(2026, 8, 31), 6) == date(2027, 2, 28)
     assert add_months(date(2027, 8, 31), 6) == date(2028, 2, 29)  # leap year (§16)
     assert add_months(date(2026, 12, 15), 1) == date(2027, 1, 15)
+
+
+# ---- Season bands on the chart (ADR-032 step 3): computed for any year, not fixed dates -----------
+
+
+def test_easter_and_lent_for_any_year() -> None:
+    from app.planning.calendar import easter, season_markers
+
+    assert easter(2027) == date(2027, 3, 28) and easter(2028) == date(2028, 4, 16)
+    lent_2027 = [m for m in season_markers(date(2027, 1, 1), date(2027, 12, 31)) if m[0] == "Lent 2027"]
+    lent_2028 = [m for m in season_markers(date(2028, 1, 1), date(2028, 12, 31)) if m[0] == "Lent 2028"]
+    assert lent_2027 == [("Lent 2027", date(2027, 2, 10), date(2027, 3, 28))]
+    assert lent_2028 == [("Lent 2028", date(2028, 3, 1), date(2028, 4, 16))]
+
+
+def test_season_markers_cover_exactly_the_chart() -> None:
+    from app.planning.calendar import season_markers
+
+    # Today's chart (Nov 16, 2026 + 26 weeks): this Christmas and Lent 2027, nothing else.
+    assert season_markers(date(2026, 11, 16), date(2027, 5, 17)) == [
+        ("Christmas", date(2026, 12, 25), date(2026, 12, 25)),
+        ("Lent 2027", date(2027, 2, 10), date(2027, 3, 28)),
+    ]
+    # A year on, the bands move with it.
+    assert [m[0] for m in season_markers(date(2027, 11, 15), date(2028, 5, 15))] == ["Christmas", "Lent 2028"]

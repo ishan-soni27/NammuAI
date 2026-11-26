@@ -28,10 +28,16 @@ Action = Literal["excluded", "corrected", "flagged"]
 
 @dataclass(frozen=True)
 class SourceRef:
-    """Where a row came from: file name and physical line number (header = line 1)."""
+    """Where a row came from: file name and physical line number (header = line 1).
+
+    `origin` is the load run whose upload first brought the row in, for rows a load carries over from
+    an earlier one (sales history accumulates, and files left out reuse the last load's copy). None
+    means the row is in a file uploaded for THIS load.
+    """
 
     file: str
     line: int
+    origin: int | None = None
 
 
 @dataclass(frozen=True)

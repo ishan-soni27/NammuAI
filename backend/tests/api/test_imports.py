@@ -61,6 +61,9 @@ def test_reloading_the_same_bluetide_files_changes_nothing_and_keeps_danas_knowl
     assert sources["items"] == "uploaded" and sources["sales_lines"] == "last load"
     assert all(f["same_as_last"] for f in report["files"])  # byte-identical to the last load
     assert any("nothing will change" in w for w in report["warnings"])
+    assert any("same night as the one loaded now" in w for w in report["warnings"])
+    assert report["today"] == "2026-11-16"
+    assert "sales" not in report  # no sales file uploaded: the stored history is reused as it is
     assert all(c["now"] == c["after"] for c in report["changes"]), report["changes"]
     assert report["snapshot_date"] == "2026-11-15"
 
@@ -95,14 +98,23 @@ def _inventory_with(old: bytes, new: bytes) -> bytes:
     return (RAW / RAW_FILES["inventory_on_hand"]).read_bytes().replace(old, new)
 
 
-def test_a_stock_count_after_today_blocks_the_load(api: TestClient) -> None:
+def test_a_newer_stock_count_moves_today_to_the_day_after_it(api: TestClient, db_engine: Engine) -> None:
+    # ADR-032: "today" follows the data. Next week's count (Sun Nov 22) makes today Mon Nov 23.
     upload = _start(api, "bluetide")
-    _put(api, upload, "inventory_on_hand", _inventory_with(b"2026-11-15", b"2026-11-20"))
+    shifted = _inventory_with(b"2026-11-15", b"2026-11-22").replace(b"2026-11-14", b"2026-11-21")
+    _put(api, upload, "inventory_on_hand", shifted, "bluetide_inventory_on_hand.csv")
     checked = api.post(f"{V}/imports/{upload}/check").json()
-    assert checked["confirm_code"] is None
-    assert any("after today" in b for b in checked["report"]["blockers"])
-    r = api.post(f"{V}/imports/{upload}/load", json={"confirm_code": "x"})
-    assert r.status_code == 409
+    assert checked["report"]["blockers"] == [] and checked["confirm_code"]
+    assert checked["report"]["today"] == "2026-11-23"
+    assert api.get(f"{V}/health").json()["as_of"] == "2026-11-16"  # a check changes nothing
+    loaded = api.post(f"{V}/imports/{upload}/load", json={"confirm_code": checked["confirm_code"]})
+    assert loaded.status_code == 200, loaded.text
+    health = api.get(f"{V}/health").json()
+    assert (health["as_of"], health["snapshot_date"]) == ("2026-11-23", "2026-11-22")
+    assert api.get(f"{V}/dashboard").json()["as_of"] == "2026-11-23"
+    with db_engine.connect() as conn:
+        used = conn.execute(text("SELECT as_of_date FROM load_runs ORDER BY id DESC LIMIT 1")).scalar_one()
+    assert str(used) == "2026-11-23"  # the load's own rules (expiry, late POs) used the new today
 
 
 def test_an_older_stock_count_than_the_one_loaded_is_blocked(api: TestClient) -> None:

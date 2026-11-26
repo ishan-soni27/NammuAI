@@ -50,7 +50,8 @@ def test_migrations_enable_rls_on_every_table() -> None:
         assert spec and spec.loader
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        assert "ENABLE ROW LEVEL SECURITY" in path.read_text(), f"{path.name} enables no RLS"
+        if module.ALL_TABLES:  # a migration that creates tables must turn RLS on for them
+            assert "ENABLE ROW LEVEL SECURITY" in path.read_text(), f"{path.name} enables no RLS"
         covered |= set(module.ALL_TABLES)
         covered -= set(getattr(module, "DROPPED", ()))
     assert covered == set(Base.metadata.tables) | {"alembic_version"}
@@ -144,7 +145,8 @@ def test_env_example_documents_every_setting() -> None:
     from app.config.settings import Settings
 
     example = (BACKEND_DIR / ".env.example").read_text()
-    documented = {m.group(1).lower() for m in re.finditer(r"^([A-Z_]+)=", example, re.MULTILINE)}
+    # An optional setting may be documented as a commented-out example ("# AS_OF_DATE=...").
+    documented = {m.group(1).lower() for m in re.finditer(r"^#?\s*([A-Z_]+)=", example, re.MULTILINE)}
     # Set by the hosting platform itself (Vercel), not by us.
     expected = set(Settings.model_fields) - {"git_commit", "vercel"}
     assert expected <= documented, f"Missing from .env.example: {expected - documented}"

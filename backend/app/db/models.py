@@ -170,6 +170,9 @@ class RawRow(Base):
     load_run_id: Mapped[int] = mapped_column(ForeignKey("load_runs.id", ondelete="CASCADE"))
     source_file: Mapped[str]  # e.g. "bluetide_items.csv"
     source_line_number: Mapped[int] = mapped_column(Integer)  # line in the file; header is line 1
+    # The load whose upload first brought this row in. Sales lines accumulate across uploads (ADR-032),
+    # so a load re-stores older lines it kept; this says which upload (and so which file) they came from.
+    origin_load_run_id: Mapped[int | None] = mapped_column(BIG_ID, ForeignKey("load_runs.id"))
     data: Mapped[dict[str, Any]]
     row_hash: Mapped[str]  # SHA-256 of the raw values; finds exact duplicates (T24)
 
@@ -446,6 +449,7 @@ class HandledFlag(Base):
     qty: Mapped[Decimal | None]  # with eta, counts as incoming supply (§6.6)
     eta: Mapped[date | None]
     note: Mapped[str | None]
+    created_on: Mapped[date | None]  # the BUSINESS day it was written (AS_OF then); null = before 0007
     created_at: Mapped[datetime] = _created_now()
     created_by: Mapped[str]
     cleared_at: Mapped[datetime | None]
@@ -453,9 +457,8 @@ class HandledFlag(Base):
     clear_reason: Mapped[str | None]
 
 
-# ---- Dana's own records (Phase 6; ADR-026, ADR-027) ---------------------------------------
-# Same rule as above: no foreign keys into the clean layer. Item, vendor and location codes are
-# plain text, checked by the service layer. Foreign keys between these app tables are fine.
+# ---- Uploads of BlueTide's files from the website (ADR-029) --------------------------------
+# Same rule as above: no foreign keys into the clean layer.
 
 
 class Upload(Base):
@@ -493,7 +496,9 @@ class UploadFile(Base):
     sha256: Mapped[str]
     size_bytes: Mapped[int] = mapped_column(Integer)
     rows: Mapped[int] = mapped_column(Integer)
-    content: Mapped[bytes] = mapped_column(LargeBinary)
+    # The bytes, until the load falls out of the newest raw_rows_keep_loads (then cleared to save space;
+    # name, sha256 and row count stay). Null = cleared.
+    content: Mapped[bytes | None] = mapped_column(LargeBinary)
     created_at: Mapped[datetime] = _created_now()
 
 

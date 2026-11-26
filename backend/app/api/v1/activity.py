@@ -15,8 +15,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.api.deps import request_rules
 from app.api.v1 import schemas as s
-from app.config.business_rules import BusinessRules, get_business_rules
+from app.config.business_rules import BusinessRules
 from app.db import models as m
 from app.db.session import get_db
 from app.loader.report import TRAP_TITLES
@@ -132,7 +133,7 @@ def load_runs(db: Session = Depends(get_db)) -> list[s.LoadRunOut]:
 
 
 @router.get("/settings", response_model=list[s.RuleOut])
-def settings(rules: BusinessRules = Depends(get_business_rules)) -> list[s.RuleOut]:
+def settings(rules: BusinessRules = Depends(request_rules)) -> list[s.RuleOut]:
     return [s.RuleOut(**rule) for rule in rules.describe()]
 
 

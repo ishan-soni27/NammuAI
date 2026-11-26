@@ -13,8 +13,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.api.deps import request_rules
 from app.api.v1 import schemas as s
-from app.config.business_rules import BusinessRules, get_business_rules
+from app.config.business_rules import BusinessRules
 from app.db.session import get_db
 from app.services import planning_service
 
@@ -25,6 +26,6 @@ router = APIRouter(tags=["On the way"])
 def on_the_way(
     q: str | None = Query(None, max_length=60, description="Search PO, item code, item name or supplier."),
     db: Session = Depends(get_db),
-    rules: BusinessRules = Depends(get_business_rules),
+    rules: BusinessRules = Depends(request_rules),
 ) -> list[s.OnTheWayLineOut]:
     return planning_service.on_the_way(db, rules, q)

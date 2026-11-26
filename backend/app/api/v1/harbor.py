@@ -12,8 +12,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.api.deps import request_rules
 from app.api.v1 import schemas as s
-from app.config.business_rules import BusinessRules, get_business_rules
+from app.config.business_rules import BusinessRules
 from app.db.session import get_db
 from app.services import harbor_service
 
@@ -22,20 +23,20 @@ router = APIRouter(tags=["Harbor storage"])
 
 @router.get("/harbor-storage", response_model=s.HarborOut)
 def harbor_storage(
-    db: Session = Depends(get_db), rules: BusinessRules = Depends(get_business_rules)
+    db: Session = Depends(get_db), rules: BusinessRules = Depends(request_rules)
 ) -> s.HarborOut:
     return harbor_service.harbor(db, rules)
 
 
 @router.post("/harbor-storage/rows", response_model=s.HarborOut)
 def add_rows(
-    body: s.HarborRowsIn, db: Session = Depends(get_db), rules: BusinessRules = Depends(get_business_rules)
+    body: s.HarborRowsIn, db: Session = Depends(get_db), rules: BusinessRules = Depends(request_rules)
 ) -> s.HarborOut:
     return harbor_service.add_rows(db, rules, body)
 
 
 @router.delete("/harbor-storage/rows/{row_id}", response_model=s.HarborOut)
 def delete_row(
-    row_id: int, db: Session = Depends(get_db), rules: BusinessRules = Depends(get_business_rules)
+    row_id: int, db: Session = Depends(get_db), rules: BusinessRules = Depends(request_rules)
 ) -> s.HarborOut:
     return harbor_service.delete_row(db, rules, row_id)

@@ -7,6 +7,11 @@
 Safe to re-run: the clean layer is rebuilt identically, each run gets its own load_runs
 row, raw rows and data issues, and Dana's settings are never overwritten (invariant #5).
 Uses an unpooled connection (one-off process) through the Supabase *session* pooler.
+
+Like a weekly upload on the website (ADR-032): "today" is the day after the files' stock count,
+the sales file is merged with the sales history the last load stored (older lines are kept), and
+raw rows of loads older than the newest raw_rows_keep_loads are pruned. A dry run touches no
+database, so it can't merge: it uses the sales file alone and says so.
 """
 
 from __future__ import annotations
@@ -19,10 +24,12 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.config.business_rules import get_business_rules
+from app.config.business_rules import rules_for_snapshot
 from app.config.settings import REPO_ROOT, get_settings
 from app.db.session import make_engine
-from app.loader.pipeline import build_dataset
+from app.loader.accumulate import merge_sales
+from app.loader.history import last_succeeded_run, raw_file_from_run
+from app.loader.pipeline import build_dataset, snapshot_date_of
 from app.loader.read_raw import read_all_raw
 from app.loader.reference import load_reference, reference_texts
 from app.loader.report import render_report
@@ -66,11 +73,33 @@ def main(argv: list[str] | None = None) -> int:
 
     settings = get_settings()
     configure_logging(settings.log_level)
-    rules = get_business_rules()
     started = time.perf_counter()
     git_sha = _git_sha()
 
     raw = read_all_raw()
+    engine = None
+    if not args.dry_run:
+        engine = make_engine(settings.database_url, pooled=False, connect_timeout=LAPTOP_CONNECT_TIMEOUT_S)
+        with engine.connect() as conn:
+            last = last_succeeded_run(conn)
+            history = (
+                raw_file_from_run(conn, last.id, last.files, "sales_lines", raw["sales_lines"].file_name)
+                if last
+                else None
+            )
+        raw["sales_lines"], sales = merge_sales(raw["sales_lines"], history)
+        logger.info(
+            "sales merged with the stored history",
+            extra={
+                "new": sales.new,
+                "updated": sales.updated,
+                "unchanged": sales.unchanged,
+                "kept": sales.kept,
+            },
+        )
+    else:
+        logger.info("dry run: sales file used alone (no database, so no stored history to merge)")
+    rules = rules_for_snapshot(snapshot_date_of(raw))  # "today" = the day after the files' stock count
     reference = load_reference()
     result = build_dataset(raw, reference, rules)
     d = result.dataset
@@ -88,12 +117,13 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     summary = None
-    if not args.dry_run:
-        engine = make_engine(settings.database_url, pooled=False, connect_timeout=LAPTOP_CONNECT_TIMEOUT_S)
+    if engine is not None:
         logger.info("writing to database", extra={"database": redact_database_url(settings.database_url)})
         run_id = start_load_run(engine, result, rules, git_sha, reference_texts())
         try:
-            summary = write_load(engine, run_id, result, reference.vendor_settings)
+            summary = write_load(
+                engine, run_id, result, reference.vendor_settings, keep_loads=rules.raw_rows_keep_loads
+            )
         except Exception as error:
             logger.exception("load failed; nothing was changed", extra={"load_run_id": run_id})
             fail_load_run(engine, run_id, error)

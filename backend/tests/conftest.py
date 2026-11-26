@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 
 os.environ["DATABASE_URL"] = ""
-os.environ["AS_OF_DATE"] = "2026-11-16"
+os.environ["AS_OF_DATE"] = ""  # blank = "today" follows the data (ADR-032); tests that pin it set it
 os.environ["CORS_ORIGINS"] = "http://localhost:5173"
 os.environ["APP_ENV"] = "test"
 os.environ["LOG_LEVEL"] = "WARNING"
@@ -22,14 +22,14 @@ import pytest  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app.config.business_rules import get_business_rules  # noqa: E402
+from app.config.business_rules import get_business_rules, rules_for_snapshot  # noqa: E402
 from app.config.settings import get_settings  # noqa: E402
 from app.db.session import _default_engine, get_sessionmaker  # noqa: E402
 
 
 def clear_config_caches() -> None:
     """Forget cached settings/rules/engine so the next call re-reads the environment."""
-    for cached in (get_settings, get_business_rules, _default_engine, get_sessionmaker):
+    for cached in (get_settings, get_business_rules, rules_for_snapshot, _default_engine, get_sessionmaker):
         cached.cache_clear()
 
 
