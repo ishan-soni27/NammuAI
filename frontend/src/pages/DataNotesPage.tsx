@@ -146,12 +146,15 @@ function Trap({ trap }: { trap: IssueTrap }) {
   );
 }
 
-export function DataNotesPage() {
+export function DataNotesPage({ embedded = false }: { embedded?: boolean }) {
   const summary = useDataIssueSummary();
+  const Heading = embedded ? "h2" : "h1";
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold">What we cleaned up and why</h1>
+        <Heading className={embedded ? "text-xl font-bold" : "text-2xl font-bold"}>
+          What we cleaned up and why
+        </Heading>
         <p className="mt-1 text-fog">
           BlueTide's exports have known problems. We never change the files; we fix things as we
           read them and write every change down here. Open a problem to see the rows, with the file,

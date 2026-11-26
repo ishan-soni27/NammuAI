@@ -543,3 +543,58 @@ export interface StockChange {
   is_undo: boolean;
   can_undo: boolean;
 }
+
+// ---- Imports (Phase 6 step 3) ---------------------------------------------------------------
+
+export interface ImportSlot {
+  slot: string;
+  label: string;
+  expected_name: string;
+  columns: string[];
+}
+
+export interface ImportFile {
+  slot: string;
+  file_name: string;
+  rows: number;
+  size_bytes: number;
+  sha256: string;
+}
+
+export interface ImportReport {
+  kind: "bluetide" | "template";
+  files: {
+    slot: string;
+    label: string;
+    file_name: string;
+    rows: number;
+    source?: "uploaded" | "last load";
+    previous_rows?: number | null;
+    same_as_last?: boolean;
+  }[];
+  blockers: string[];
+  warnings: string[];
+  changes?: { what: string; now?: number; after?: number; count?: number }[];
+  snapshot_date?: string;
+  current_snapshot_date?: string | null;
+  notes?: { total: number; by_problem: { trap_id: string; title: string; count: number }[] };
+  conflicts?: string[];
+  orphans?: string[];
+  problems?: { slot: string; label: string; line: number; message: string }[];
+  loaded?: Record<string, unknown>;
+}
+
+/** GET /imports, /imports/{id} */
+export interface Import {
+  id: number;
+  kind: "bluetide" | "template";
+  status: "open" | "checked" | "loaded" | "failed" | "discarded";
+  created_at: string;
+  created_by: string;
+  slots: ImportSlot[];
+  files: ImportFile[];
+  report: ImportReport | null;
+  confirm_code: string | null;
+  load_run_id: number | null;
+  error: string | null;
+}

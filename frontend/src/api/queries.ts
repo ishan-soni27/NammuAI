@@ -10,10 +10,11 @@
  */
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useToast } from "../components/Toast";
-import { ApiError, apiGet, apiSend } from "./client";
+import { ApiError, apiGet, apiSend, apiUpload } from "./client";
 import type {
   AuditEntry,
   Customer,
+  Import,
   PickPlan,
   Shipment,
   StockChange,
@@ -56,6 +57,7 @@ export const keys = {
   picks: (orderNo: string) => ["picks", orderNo] as const,
   stockLots: (item: string) => ["stock-lots", item] as const,
   stockChanges: (item: string) => ["stock-changes", item] as const,
+  imports: ["imports"] as const,
 };
 
 // ---- Reads ---------------------------------------------------------------------------------
@@ -178,6 +180,12 @@ export const useStockChanges = (item: string) =>
     queryFn: ({ signal }) => apiGet<StockChange[]>(`/stock-movements?item=${enc(item)}`, signal),
   });
 
+export const useImports = () =>
+  useQuery({
+    queryKey: keys.imports,
+    queryFn: ({ signal }) => apiGet<Import[]>("/imports", signal),
+  });
+
 // ---- Edits ---------------------------------------------------------------------------------
 
 function refreshAfterEdit(client: QueryClient) {
@@ -194,6 +202,9 @@ function refreshAfterEdit(client: QueryClient) {
     ["stock-lots"],
     ["stock-changes"],
     keys.customers,
+    keys.imports,
+    ["data-issues"],
+    keys.loadRuns,
   ];
   for (const key of all) {
     void client.invalidateQueries({ queryKey: key });
@@ -451,4 +462,42 @@ export const useMoveStock = () =>
   useEdit(
     (v: MoveInput) => apiSend<Movement[]>("POST", "/stock-moves", v),
     (v) => `Moved ${v.qty.toLocaleString("en-US")} of ${v.item_code} to ${v.to_location}`,
+  );
+
+// ---- Imports (Phase 6 step 3) -------------------------------------------------------------------
+
+export const useStartImport = () =>
+  useEdit(
+    (v: { kind: "bluetide" | "template" }) => apiSend<Import>("POST", "/imports", v),
+    (v) =>
+      v.kind === "bluetide"
+        ? "Started a BlueTide import"
+        : "Started an import of your spreadsheets",
+  );
+
+export const usePutImportFile = () =>
+  useEdit(
+    (v: { id: number; slot: string; file: File }) =>
+      apiUpload<Import>(`/imports/${v.id}/files/${enc(v.slot)}?name=${enc(v.file.name)}`, v.file),
+    (v) => `${v.file.name} uploaded`,
+  );
+
+export const useCheckImport = () =>
+  useEdit(
+    (v: { id: number }) => apiSend<Import>("POST", `/imports/${v.id}/check`),
+    (_v, imp) =>
+      imp.confirm_code ? "Checked: ready to load" : "Checked: something needs fixing first",
+  );
+
+export const useLoadImport = () =>
+  useEdit(
+    (v: { id: number; confirm_code: string }) =>
+      apiSend<Import>("POST", `/imports/${v.id}/load`, { confirm_code: v.confirm_code }),
+    () => "Loaded. The Monday numbers now use the new data.",
+  );
+
+export const useDiscardImport = () =>
+  useEdit(
+    (v: { id: number }) => apiSend<Import>("DELETE", `/imports/${v.id}`),
+    () => "Import discarded",
   );

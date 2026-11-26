@@ -156,10 +156,7 @@ function Monday({ data }: { data: Dashboard }) {
               <p key={sentence}>{sentence}</p>
             ))}
             <p>
-              <Link
-                to="/data-notes"
-                className="font-semibold text-ink underline underline-offset-2"
-              >
+              <Link to="/data" className="font-semibold text-ink underline underline-offset-2">
                 What we cleaned up and why
               </Link>
               {data.last_load_at && (

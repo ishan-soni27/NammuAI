@@ -11,7 +11,7 @@ import { AppHeader } from "./components/AppHeader";
 import { LoadingState } from "./components/LoadingState";
 import { getActor, hasChosenActor } from "./lib/actor";
 import { ActivityPage } from "./pages/ActivityPage";
-import { DataNotesPage } from "./pages/DataNotesPage";
+import { DataPage } from "./pages/DataPage";
 import { ItemsPage } from "./pages/ItemsPage";
 import { LeadTimesPage } from "./pages/LeadTimesPage";
 import { MondayPage } from "./pages/MondayPage";
@@ -48,7 +48,8 @@ export function App() {
             <Route path="/shipments/new" element={<NewShipmentPage />} />
             <Route path="/suppliers" element={<LeadTimesPage />} />
             <Route path="/lead-times" element={<Navigate to="/suppliers" replace />} />
-            <Route path="/data-notes" element={<DataNotesPage />} />
+            <Route path="/data" element={<DataPage />} />
+            <Route path="/data-notes" element={<Navigate to="/data" replace />} />
             <Route path="/activity" element={<ActivityPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

@@ -53,10 +53,11 @@ type Method = "GET" | "POST" | "PATCH" | "DELETE";
 
 /** Send a request and return the JSON body. Throws ApiError on network failure or a non-2xx reply. */
 async function request<T>(
-  method: Method,
+  method: Method | "PUT",
   path: string,
   body?: unknown,
   signal?: AbortSignal,
+  raw?: Blob,
 ): Promise<T> {
   const requestId = newRequestId();
   const headers: Record<string, string> = {
@@ -64,13 +65,14 @@ async function request<T>(
     "X-Actor": getActor(),
     "X-Request-ID": requestId,
   };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (raw !== undefined) headers["Content-Type"] = "text/csv";
+  else if (body !== undefined) headers["Content-Type"] = "application/json";
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: raw !== undefined ? raw : body === undefined ? undefined : JSON.stringify(body),
       signal,
     });
   } catch (cause) {
@@ -124,4 +126,9 @@ export function apiSend<T>(
   body?: unknown,
 ): Promise<T> {
   return request<T>(method, path, body);
+}
+
+/** PUT a file's bytes as the request body (imports: the CSV exactly as on disk, so its SHA-256 matches). */
+export function apiUpload<T>(path: string, file: Blob): Promise<T> {
+  return request<T>("PUT", path, undefined, undefined, file);
 }

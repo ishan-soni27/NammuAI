@@ -32,6 +32,9 @@ const ACTION: Record<string, string> = {
   "vendor.create": "Added a supplier",
   "item.create": "Added an item",
   "item.update": "Changed item details",
+  "import.start": "Started an import",
+  "import.load": "Loaded an import",
+  "import.discard": "Discarded an import",
 };
 
 const show = (v: unknown) =>
