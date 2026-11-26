@@ -69,6 +69,8 @@ export interface ItemCard {
   late_qty: number;
   weeks_of_cover: number | null;
   covered_only_by_late_po: boolean;
+  /** Only for items a late PO alone would cover: what to do, in one sentence (ADR-033). */
+  instruction?: string | null;
   if_late_arrive_status: Status | null;
   if_late_arrive_order_at_least: number | null;
   handled_note: HandledNote | null;
@@ -226,6 +228,17 @@ export interface ItemSettings {
   updated_by: string | null;
 }
 
+export interface BreakdownRow {
+  key: string;
+  label: string;
+  qty: number | null;
+  unit: string | null;
+  date: string | null;
+  detail: string | null;
+  /** The item-page table that holds the source rows: "#have", "#promised", "#on-the-way", ... */
+  link: string | null;
+}
+
 export interface SeasonMarker {
   label: string;
   start: string;
@@ -248,7 +261,8 @@ export interface ItemDetail {
   demand: Demand;
   projection: Point[];
   if_late_arrive_projection: Point[] | null;
-  explanation: string[];
+  /** The numbers-only "why" (ADR-033): one row per number the engine used. */
+  breakdown: BreakdownRow[];
   settings: ItemSettings | null;
   aliases: string[];
   handled_notes: HandledNote[];

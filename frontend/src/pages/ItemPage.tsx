@@ -1,7 +1,8 @@
 /**
  * Item page (BUILD_PROMPT §9.3): why the Monday screen says what it says, down to the source rows.
  *   1. header: name, code, supplier, status, "Mark as handled"
- *   2. "Why" as numbered steps (from the engine's explanation)
+ *   2. "Why" as numbers: one row per number the engine used, each linking to its source table
+ *      (ADR-033), with the one instruction for items only a late PO would cover
  *   3. the projection chart (the runway, enlarged) and its week-by-week table
  *   4. tables: lots (counted or not, and why), promised to customers, on the way (with "Set real
  *      date"), late POs, sales by month
@@ -25,6 +26,45 @@ import { duration, money, qty, unitWord, weeks } from "../lib/format";
 import { itemName } from "../lib/names";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** The numbers-only "why" (ADR-033): label, number, date and a short note; each label links to the
+ * table below that holds its source rows. Rows come computed from the engine, so they always agree. */
+function Breakdown({ detail }: { detail: ItemDetail }) {
+  const instruction = detail.card.instruction;
+  return (
+    <div className="space-y-3">
+      {instruction && (
+        <p className="rounded-md bg-yellow-tint px-3 py-2 text-sm font-semibold">{instruction}</p>
+      )}
+      <table className="w-full text-sm">
+        <tbody className="divide-y divide-rope">
+          {detail.breakdown.map((row, i) => (
+            <tr key={`${row.key}-${i}`} className="align-top">
+              <th scope="row" className="py-1.5 pr-3 text-left font-normal">
+                {row.link ? (
+                  <a href={row.link} className="underline-offset-2 hover:underline">
+                    {row.label}
+                  </a>
+                ) : (
+                  row.label
+                )}
+                {row.detail && <span className="block text-xs text-fog">{row.detail}</span>}
+              </th>
+              <td className="whitespace-nowrap py-1.5 pr-3 text-right font-semibold tabular-nums">
+                {row.qty !== null
+                  ? `${row.qty.toLocaleString("en-US", { maximumFractionDigits: 1 })} ${row.unit ?? ""}`
+                  : ""}
+              </td>
+              <td className="whitespace-nowrap py-1.5 text-right tabular-nums">
+                {row.date ? formatShortDate(row.date) : ""}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function Card({ title, children, id }: { title: ReactNode; children: ReactNode; id?: string }) {
   return (
@@ -211,13 +251,10 @@ function Item({ detail }: { detail: ItemDetail }) {
 
       <div className="grid gap-5 lg:grid-cols-[2fr_3fr]">
         <Card title="Why">
-          <ol className="list-decimal space-y-2 pl-5">
-            {detail.explanation.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ol>
+          <Breakdown detail={detail} />
         </Card>
         <Card
+          id="chart"
           title={`Stock over the next ${duration(card.runway.horizon_days)}, in ${unitWord(uom)}`}
         >
           <ProjectionChart detail={detail} />
@@ -225,7 +262,7 @@ function Item({ detail }: { detail: ItemDetail }) {
         </Card>
       </div>
 
-      <Card title="What you have" id="lots">
+      <Card title="What you have" id="have">
         <p className="mb-2 text-fog">
           You can sell {qty(card.sellable, uom)}.
           {card.on_hold > 0 && <> {qty(card.on_hold, uom)} on hold.</>}
@@ -275,7 +312,7 @@ function Item({ detail }: { detail: ItemDetail }) {
       </Card>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card title={<Term explain="promised">Promised to customers</Term>}>
+        <Card id="promised" title={<Term explain="promised">Promised to customers</Term>}>
           {detail.promised.length === 0 ? (
             <p className="text-fog">No open customer orders.</p>
           ) : (
@@ -292,7 +329,7 @@ function Item({ detail }: { detail: ItemDetail }) {
           )}
         </Card>
 
-        <Card title="On the way">
+        <Card id="on-the-way" title="On the way">
           {detail.incoming.length === 0 && detail.late.length === 0 ? (
             <p className="text-fog">Nothing on order.</p>
           ) : (
@@ -320,7 +357,7 @@ function Item({ detail }: { detail: ItemDetail }) {
                 </Table>
               )}
               {detail.late.length > 0 && (
-                <div>
+                <div id="late">
                   <h3 className="font-semibold text-red">
                     <Term explain="late">Late</Term>, not counted
                   </h3>
@@ -350,7 +387,7 @@ function Item({ detail }: { detail: ItemDetail }) {
         </Card>
       </div>
 
-      <Card title="Sales by month">
+      <Card id="demand" title="Sales by month">
         <p className="mb-2 text-fog">
           Selling about {qty(detail.demand.selling_per_week, uom)} a week over the last{" "}
           {Math.round(detail.demand.measured_over_days / 7)} weeks. The season row shows how each

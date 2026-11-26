@@ -1,13 +1,14 @@
 /**
  * One item in "What to order" (and in Handled / Fine), as a card in a grid (Ishan, 2026-11-26: "I
  * want the Items in What to Order to be in grid layout"). Closed, it shows the status, the name, one
- * key date, the runway bar and how much to order. Clicking it opens it across the full row with how
- * much to order and from whom, the shortfall, the late-PO note, stock on hold, Dana's handled note,
- * and the buttons. The item page has the full "why".
+ * key date, the runway bar and how much to order. Clicking it opens it across the full row with short
+ * computed labels (runs out, order by, order at least, when a new order lands, the shortfall, stock
+ * on hold, late POs), the one instruction for items only a late PO would cover (ADR-033), Dana's
+ * handled note and the buttons. No paragraphs: the item page has the full numbers-only "why".
  * Native <details>, so it opens with the keyboard and screen readers for free.
  * Fed by: ItemCard from GET /dashboard.
  */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { ItemCard } from "../api/types";
 import { formatShortDate } from "../lib/dates";
@@ -32,31 +33,67 @@ function keyDate(card: ItemCard, asOf: string): string {
   return `Lasts more than ${duration(card.runway.horizon_days)}`;
 }
 
-function whenSentence(card: ItemCard, asOf: string): string {
-  const runsOut = card.run_out_date
-    ? `Runs out about ${dayWithRelative(card.run_out_date, asOf)}.`
-    : `Lasts more than ${duration(card.runway.horizon_days)}.`;
-  const lands = `An order placed today arrives about ${dayWithRelative(card.new_order_arrival, asOf)}.`;
+/** The opened card's facts: short computed labels, each a number or a date (ADR-033). */
+function Facts({ card, asOf }: { card: ItemCard; asOf: string }) {
+  const uom = card.sell_uom;
+  const facts: [ReactNode, ReactNode][] = [
+    [
+      "Runs out",
+      card.run_out_date
+        ? dayWithRelative(card.run_out_date, asOf)
+        : `not within ${duration(card.runway.horizon_days)}`,
+    ],
+  ];
   if ((card.status === "ORDER_THIS_WEEK" || card.status === "ORDER_SOON") && card.order_by_date) {
-    return card.order_by_date < asOf
-      ? `${runsOut} The order was due ${dayWithRelative(card.order_by_date, asOf)}, so order now.`
-      : `${runsOut} Order by ${dayWithRelative(card.order_by_date, asOf)} so it arrives in time.`;
+    facts.push([
+      "Order by",
+      card.order_by_date < asOf
+        ? `now (was due ${formatShortDate(card.order_by_date)})`
+        : dayWithRelative(card.order_by_date, asOf),
+    ]);
   }
-  return card.status === "TOO_LATE" ? `${runsOut} ${lands}` : runsOut;
-}
-
-/**
- * What to do about the order. "Order at least 0" happens in two cases: stock lasts long enough for
- * now, or it's too late and stock already on the way lands before a new order could, so ordering more
- * today wouldn't close the gap (SHR-1620: PO-260443 lands Jan 25, a new order Feb 8).
- */
-function orderSentence(card: ItemCard, asOf: string): string {
-  if (card.order_at_least > 0) return `Order at least ${qty(card.order_at_least, card.sell_uom)}.`;
-  if (card.status !== "TOO_LATE") return "Nothing needs ordering today.";
-  const backFirst = card.back_in_stock_date && card.back_in_stock_date < card.new_order_arrival;
-  return backFirst && card.back_in_stock_date
-    ? `Ordering more today won't close the gap: stock already on the way arrives first, about ${dayWithRelative(card.back_in_stock_date, asOf)}.`
-    : "Ordering more today won't close the gap.";
+  facts.push(["Order at least", qty(card.order_at_least, uom)]);
+  facts.push([
+    <Term key="arrive" explain="arrive">
+      New order lands
+    </Term>,
+    `${dayWithRelative(card.new_order_arrival, asOf)} · ${card.vendor_name}, ${weeks(card.lead_time_days)} + ${weeks(card.cushion_days)} cushion`,
+  ]);
+  if (card.status === "TOO_LATE" && card.short_qty > 0) {
+    facts.push([
+      "Short",
+      <span key="short" className="text-red">
+        {qty(card.short_qty, uom)}
+        {card.back_in_stock_date && ` until ${formatShortDate(card.back_in_stock_date)}`}
+      </span>,
+    ]);
+  }
+  if (card.on_hold > 0) {
+    facts.push([
+      <Term key="hold" explain="onHold">
+        On hold
+      </Term>,
+      `${qty(card.on_hold, uom)}, not counted`,
+    ]);
+  }
+  if (card.late_qty > 0) {
+    facts.push([
+      <Term key="late" explain="late">
+        Late POs
+      </Term>,
+      `${qty(card.late_qty, uom)}, not counted`,
+    ]);
+  }
+  return (
+    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
+      {facts.map(([label, value], i) => (
+        <div key={i} className="contents">
+          <dt className="text-fog">{label}</dt>
+          <dd className="font-semibold">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 // The card's left edge in its traffic-light colour (always with the chip's words too).
@@ -136,32 +173,10 @@ export function OrderRow({
       </summary>
 
       <div className="space-y-2 border-t border-rope px-4 pb-4 pt-3">
-        <p>{whenSentence(card, asOf)}</p>
-        <p>
-          <span className="font-semibold">{orderSentence(card, asOf)}</span> {card.vendor_name}
-          {card.country ? `, ${card.country}` : ""}: {weeks(card.lead_time_days)}{" "}
-          <Term explain="arrive">to arrive</Term> plus {weeks(card.cushion_days)}{" "}
-          <Term explain="cushion">cushion</Term>.
-        </p>
-        {card.status === "TOO_LATE" && card.short_qty > 0 && (
-          <p className="text-red">
-            Expect to be short about {qty(card.short_qty, uom)} until it's back in stock
-            {card.back_in_stock_date
-              ? ` about ${dayWithRelative(card.back_in_stock_date, asOf)}`
-              : ""}
-            . Ask the supplier to speed it up, or find another source.
-          </p>
-        )}
-        {card.covered_only_by_late_po && (
-          <p className="rounded-md bg-yellow-tint px-3 py-2">
-            <span className="font-semibold">Only covered by a late PO.</span>{" "}
-            {qty(card.late_qty, uom)} on a <Term explain="late">late PO</Term> would cover it if it
-            really shows up. It isn't counted until you set a real arrival date.
-          </p>
-        )}
-        {card.on_hold > 0 && (
-          <p className="text-sm text-fog">
-            {qty(card.on_hold, uom)} <Term explain="onHold">on hold</Term> isn't counted.
+        <Facts card={card} asOf={asOf} />
+        {card.instruction && (
+          <p className="rounded-md bg-yellow-tint px-3 py-2 text-sm font-semibold">
+            {card.instruction}
           </p>
         )}
         {card.handled_note && <HandledNoteView note={card.handled_note} uom={uom} />}
