@@ -516,9 +516,73 @@ opens an interactive screen. Claude pointed Ishan to `/doctor` (or `! claude doc
 ## #22 | 2026-11-26 09:48 UTC | "go": Phase 5, the screens
 **Prompt (simplified):** Go ahead with Phase 5 (plan approved: Monday screen, item page with chart, lead times, data
 notes, activity, and all states).
-**What changed:** See the commits that follow. This entry is completed at the Phase 5 stop.
-**Impact:** In progress.
-**Decisions made (and by whom):** Ishan approved the Phase 5 plan. Claude: season windows (Christmas, Lent 2027) go in
-business_rules.py rather than the frontend; lead times are edited in weeks; Recharts is pinned at 3.11.1.
-**AI mistakes caught or corrected:** In progress.
-**Follow-ups:** Screenshots, then the Phase 6 stop.
+**What changed:**
+- **Backend (small):**
+  - `business_rules.season_markers` (Christmas 2026, Lent 2027) served on the item page;
+  - stuck lots carry `location_name`;
+  - tests for both.
+- **Frontend** (`frontend/src/`):
+  - `api/types.ts` mirrors every schema; `api/queries.ts` has one hook per endpoint plus the edits (each toast says
+    what happened);
+  - **Monday screen:** summary sentences, what isn't counted, then *What to order* (runway bar, run-out and order-by
+    dates, order at least, supplier terms, shortfall, "Only covered by a late PO", Mark as handled), then Handled,
+    **Late or unknown** (late POs with Set real date, stock on hold) and *Everything else looks fine*, and *What you're
+    stuck with* (grouped by tag, Harbor lots first and badged, $ at cost);
+  - **Item page:** numbered "Why" steps; the 26-week chart (stock line, if-the-late-PO-arrives line, out-of-stock band,
+    new-order and run-out markers, arrivals, busy seasons) with a week-by-week table twin; lots (counted or not, and
+    why); promised to customers; on the way with Set real date / Change date / Clear date; sales by month with the
+    season index; item settings;
+  - **Lead times** (edited in weeks), **Data notes** (rows 50 at a time with file, line and the original CSV values),
+    **Activity** (before and after, loads, events and errors);
+  - shared: header nav, "Using as: <name> · change", the one-time "Who's using this?" prompt, hover glossary, loading /
+    cold-start / error states, browser errors reported to `/client-events`;
+  - the item page loads on demand (Recharts), so the Monday bundle is 283 KB.
+- Docs: ADR-024, PRIORITIES (P0 #2a–#8 done), CLAUDE.md frontend map.
+**Impact:**
+- **Dana can now use the app.** https://nammu-ai.vercel.app shows both answers on one screen. Every number links to
+  its item page, and every edit is saved with her name and shows up in Activity.
+- Checks: 201 backend tests pass; ruff, `npm run build`, `npm run lint` and `format:check` are clean; raw checksums OK.
+- **Browser checks** (headless Chrome, every page at 1280 px and 375 px, local and live): no console errors, no page
+  errors, no sideways scrolling.
+- **Click-through through the UI, local** (throwaway SQLite copy of the real data):
+  - mark SHR-1620 handled with 400 cs arriving Dec 10: it moves to Handled and counts as on the way; clear it;
+  - set PO-260394's real date from the Monday screen, see "Set by <name>" on the item page, clear it;
+  - change Downeast Lobster from 3 to 4 weeks (28 days) and back;
+  - open T01's rows; the Activity log lists every change.
+- **The same click-through on live**, labelled "Claude (live click-through)" and reverted. Four audit rows record it.
+  The lead-time step was skipped on live, because saving would replace the note that records Dana's email confirmation.
+  Live is back to 0 handled and the same 3 late POs.
+**Decisions made (and by whom):** Ishan approved the Phase 5 plan. Claude decided (ADR-024):
+- season windows live in business_rules.py, not the frontend;
+- lead times are edited in weeks;
+- the chart stops at zero and shades "Out of stock" instead of plotting negative stock;
+- item names are shown in sentence case next to the code;
+- Recharts 3.11.1 is pinned and loads only on the item page;
+- stuck lots show location names.
+**AI mistakes caught or corrected:**
+- **The first chart plotted the engine's balance below zero** ("-1,200 cs"). The engine uses negatives to measure the
+  shortage; a shelf can't hold negative stock. Caught in the screenshots, fixed with the out-of-stock band.
+- **The "on hold" hover bubble swallowed clicks.** It opened over the "Set real date" button just above it and stayed
+  open while the mouse was on it. Caught by the browser click-through; the bubble now ignores the mouse.
+- **The phone layout scrolled sideways:**
+  - hidden hover bubbles still took up width, so they're now `display: none` until hover;
+  - grid cards grew to fit their tables, so they now have `min-w-0`;
+  - on live only (where Activity has rows), a screen-reader-only word escaped its table's scroll box, so table scroll
+    boxes are now `position: relative`.
+- **SHR-1620's card said "Too late" and "Nothing needs ordering today" together.** The engine was right: PO-260443
+  lands Jan 25, before a new order could (Feb 8). The card now says ordering more today won't close the gap.
+- Small copy fixes: doubled brackets in the shortage line, "Yes. Counted.", and "No sales in the last 8 weeks" (a
+  hard-coded number, replaced with words).
+- **Tool-use slip:** a long bash heredoc that wrote the click-through script was blocked by a safety check. It deleted
+  nothing. Re-done with the file tool.
+- **The click-through's own bug:** it checked the handled note while its section was still closed. Fixed in the script,
+  not the app.
+**Follow-ups:**
+- Phase 6 (README, DEMO_SCRIPT, final docs) is waiting for "go".
+- Still open: Vercel cron registration (Ishan to confirm); Harbor cases per pallet (P1 #1).
+- Known nits, not fixed: at 375 px the chart's season labels ("Christmas", "Lent 2027") can overlap the "New order
+  lands" label, and 4-column tables scroll sideways inside their card.
+- Live screenshots (every page, 1280 px and 375 px, plus the first-visit prompt and Activity after the click-through)
+  are in `docs/screenshots/phase5/` (6 MB, not committed; Ishan decides whether some go into the README).
+- The preview, screenshot and click-through scripts live in the session scratch folder. If Ishan wants them in the
+  repo (e.g. `scripts/ui_check.mjs`), that's a small Phase 6 task.
