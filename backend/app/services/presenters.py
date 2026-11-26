@@ -74,7 +74,7 @@ def card(p: ItemPlan, as_of: date, horizon_days: int, handled: s.HandledNoteOut 
     )
 
 
-def stuck_out(item: StuckItem) -> s.StuckItemOut:
+def stuck_out(item: StuckItem, location_names: dict[str, str]) -> s.StuckItemOut:
     return s.StuckItemOut(
         item_code=item.item_code,
         description=item.description,
@@ -87,6 +87,7 @@ def stuck_out(item: StuckItem) -> s.StuckItemOut:
             s.StuckLotOut(
                 lot_no=lot.lot_no,
                 location_code=lot.location_code,
+                location_name=location_names.get(lot.location_code, lot.location_code),
                 qty=lot.qty,
                 expiry_date=lot.expiry_date,
                 value_at_cost=round(lot.value_at_cost, 2) if lot.value_at_cost is not None else None,
@@ -206,6 +207,7 @@ def dashboard(
     handled_by_item: dict[str, s.HandledNoteOut],
     snapshot_date: date | None,
     last_load_at: object,
+    location_names: dict[str, str],
 ) -> s.DashboardOut:
     as_of = result.as_of
     planned = [p for p in result.items if p.lifecycle_status == "active"]
@@ -276,6 +278,6 @@ def dashboard(
         handled_items=handled,
         fine_items=fine,
         late_inventory=s.LateInventoryOut(late_pos=late_pos, on_hold=on_hold),
-        stuck_items=[stuck_out(st) for st in result.stuck],
+        stuck_items=[stuck_out(st, location_names) for st in result.stuck],
         trust_strip=trust_out(result.trust),
     )

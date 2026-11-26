@@ -78,6 +78,7 @@ def dashboard(session: Session, rules: BusinessRules) -> s.DashboardOut:
         handled_by_item=handled_notes_by_item(session, rules),
         snapshot_date=load.snapshot_date,
         last_load_at=load.finished_at,
+        location_names={loc.code: loc.name for loc in session.scalars(select(m.Location)).all()},
     )
 
 
@@ -216,4 +217,7 @@ def item_detail(session: Session, rules: BusinessRules, raw_code: str) -> s.Item
             a.alias_code for a in session.scalars(select(m.ItemAlias).where(m.ItemAlias.item_code == code))
         ),
         handled_notes=[presenters.handled_out(f) for f in flags],
+        season_markers=[
+            s.SeasonMarkerOut(label=label, start=start, end=end) for label, start, end in rules.season_markers
+        ],
     )

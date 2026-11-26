@@ -252,6 +252,19 @@ class BusinessRules:
         source="Dana 00:01:10: 'Every Monday.' (A13)",
     )
 
+    # ---- Season markers on the item chart (§9.1) -------------------------------------------
+    season_markers: tuple[tuple[str, date, date], ...] = _rule(
+        (
+            ("Christmas", date(2026, 12, 25), date(2026, 12, 25)),
+            ("Lent 2027", date(2027, 2, 10), date(2027, 3, 28)),
+        ),
+        doc="Busy seasons drawn on the item chart: (label, first day, last day). Display only; the "
+        "forecast learns seasonality from last year's sales, not from these dates.",
+        source="BUILD_PROMPT §9.1 (Christmas and Lent 2027 shaded) and §3.8: Lent 2027 runs from "
+        "Ash Wednesday Feb 10 to Easter Mar 28. Dana 00:07:55: 'Lent is huge ... the holidays are crab, "
+        "shrimp and lobster tails.'",
+    )
+
     # ---- Validation bounds for Dana's edits (§8.5) --------------------------------------
     setting_days_min: int = _rule(
         1,

@@ -43,6 +43,8 @@ def test_dashboard_answers_both_questions(api: TestClient) -> None:
     assert all(i["lifecycle_status"] == "active" for i in d["order_items"] + d["fine_items"])  # G17
     stuck = {s["item_code"]: s for s in d["stuck_items"]}
     assert stuck["SAL-POR6"]["qty"] == 1350 and stuck["SAL-POR6"]["qty_at_harbor"] == 1050
+    harbor_lots = [lot for lot in stuck["SAL-POR6"]["lots"] if lot["at_harbor"]]
+    assert harbor_lots and all(lot["location_name"] == "Harbor Cold Storage" for lot in harbor_lots)
     assert "SHR-1620" not in stuck
     assert d["trust_strip"]["on_hold"] == {"CS": 420} and d["trust_strip"]["late_po_qty"] == {"CS": 1500}
     assert {line["po_no"] for line in d["late_inventory"]["late_pos"]} == {
@@ -64,6 +66,7 @@ def test_item_drill_down_explains_the_number(api: TestClient) -> None:
     assert reasons["QA-HOLD"].startswith("On QA hold")
     assert d["explanation"][0].startswith("You can sell 480 cs now")
     assert len(d["projection"]) == 183 and d["demand"]["season_by_month"]["12"] > 1.4
+    assert {"label": "Lent 2027", "start": "2027-02-10", "end": "2027-03-28"} in d["season_markers"]
 
 
 def test_item_lookup_accepts_bluetide_spellings(api: TestClient) -> None:

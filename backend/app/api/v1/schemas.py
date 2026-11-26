@@ -129,6 +129,7 @@ class LateInventoryOut(BaseModel):
 class StuckLotOut(BaseModel):
     lot_no: str
     location_code: str
+    location_name: str
     qty: float
     expiry_date: date | None
     value_at_cost: float | None
@@ -262,6 +263,12 @@ class ItemSettingsOut(BaseModel):
     updated_by: str | None
 
 
+class SeasonMarkerOut(BaseModel):
+    label: str
+    start: date
+    end: date
+
+
 class ItemDetailOut(BaseModel):
     """GET /api/v1/items/{item_code}: the full 'why' (§9.3)."""
 
@@ -283,6 +290,9 @@ class ItemDetailOut(BaseModel):
     settings: ItemSettingsOut | None
     aliases: list[str]
     handled_notes: list[HandledNoteOut]
+    season_markers: list[SeasonMarkerOut] = Field(
+        description="Busy seasons to shade on the chart (business_rules)."
+    )
 
 
 # ---- Dana's edits --------------------------------------------------------------------------------
