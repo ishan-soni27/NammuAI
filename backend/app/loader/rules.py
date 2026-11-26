@@ -1067,7 +1067,8 @@ def _build_po_line(
                 "warning",
                 "flagged",
                 f"{po_no}: BlueTide said it would arrive {expected:%b %d, %Y}, but nothing more has been "
-                "received. Treated as late; Dana can type in the real date.",
+                "received. The plan re-checks the date with the real lead time; a PO that is late is "
+                "not counted as coming until Dana types in a real date.",
                 item_code=code,
             )
     elif status == "cancelled":

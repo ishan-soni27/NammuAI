@@ -141,7 +141,8 @@ class BusinessRules:
         unit="days",
         doc="An item with no real sales in this many days and no open PO is treated "
         "as stopped selling: never suggested for reorder.",
-        source="T06. Dana 00:04:40: 'Some items we just stopped buying.' Pending Dana (email Q5, A05).",
+        source="T06. Dana 00:04:40: 'Some items we just stopped buying.' Confirmed by Dana 2026-11-26 for "
+        "TIL-FIL, SHR-6170 and PAN-1012: 'we've stopped carrying all three' (A05).",
     )
 
     # ---- Demand forecast (§6.7) --------------------------------------------------------
@@ -205,13 +206,16 @@ class BusinessRules:
     )
 
     # ---- Incoming supply (§6.6) --------------------------------------------------------
-    overdue_po_assumed_days: int = _rule(
-        7,
+    late_po_assumed_days: int | None = _rule(
+        None,
         unit="days",
-        doc="A PO that should already be here but hasn't been received is assumed to "
-        "arrive this many days after today, and is flagged 'late, confirm with vendor'. "
-        "'Should already be here' means its re-derived date is ON OR BEFORE today.",
-        source="Email Q3 default (A03). 'On or before' decided by Ishan 2026-11-25 (A18).",
+        doc="A late PO is one that should already be here (its re-derived arrival date is ON OR "
+        "BEFORE today) but hasn't been received. None = it is NOT counted as coming until Dana "
+        "types in a real date; it stays flagged as late, and any item that only a late PO would "
+        "cover is called out. A number = assume late POs arrive that many days after today.",
+        source="Dana's email 2026-11-26 (Q3): 'Flag them as late, but please don't assume they'll "
+        "arrive within a week. If an item is only covered by a late PO, I want to see that.' "
+        "Replaces the email default of 7 days (A03). 'On or before' decided by Ishan 2026-11-25 (A18).",
     )
 
     # ---- Fallbacks when Dana hasn't told us (§6.5) -------------------------------------

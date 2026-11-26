@@ -89,7 +89,11 @@ one-offs. Limits: one year of data, monthly granularity, no trend detection. _Fu
 
 ## ADR-006 Conservative lead times and ETA re-derivation
 **Decision:** Use the upper end of Dana's ranges. Never trust a BlueTide PO date earlier than the real lead time allows.
-A stockout costs more than overstock. See also A18 (late means on or before AS_OF). _Full write-up to come (§6.5, §6.6)._
+A stockout costs more than overstock. See also A18 (late means on or before AS_OF).
+**Updated 2026-11-26 (Dana's reply, A03):** a late PO is no longer assumed to arrive in 7 days. It is **not counted as
+coming** until Dana types a real date, stays flagged, and items that only a late PO would cover are called out. This is
+even more conservative than the original rule, and it's what the customer asked for. The knob is
+`late_po_assumed_days` (None = don't count). _Full write-up to come (§6.5, §6.6)._
 
 ## ADR-007 Sellable definition, and what is shown but not counted
 **Decision:** Sellable means latest snapshot, sellable location, qty > 0, not expired, active item, plus negative ADJ lines.

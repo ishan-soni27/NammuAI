@@ -329,3 +329,37 @@ from BUILD_PROMPT §8.1, flagged at the Phase 2 stop).
   Fixed with clock_timestamp() for future runs. Run #2's row is left as history rather than rewritten.
 **Follow-ups:** The Data notes page (Phase 4) must read issues from the latest successful run only. Pruning old raw
 rows is a later step. Phase 3 (planning engine) plan is waiting for "go".
+
+## #16 | 2026-11-26 05:15 UTC | Dana's reply to the six questions
+**Prompt (simplified):** Ishan pasted the email as sent and Dana's reply.
+**What changed:**
+- `docs/client/dana-replies.md`: the reply, verbatim, plus a table of what each answer changed.
+- `business_rules.py`: `overdue_po_assumed_days = 7` replaced by `late_po_assumed_days = None` (don't count late POs
+  until Dana enters a date); the dormant rule's source now cites her confirmation.
+- `loader/classify.py` + `loader/rules.py`: "Pending Dana" wording removed; the T26 message now says late POs aren't counted.
+- Seeds: `vendor_settings_seed.csv`, `locations.csv` and `stockout_periods.csv` got provenance notes citing her
+  answers. **No numbers changed.**
+- Docs: ASSUMPTIONS A01, A02, A04, A05, A06 → Confirmed by Dana; **A03 → Changed by Dana**; A16 → rate known
+  (/pallet/month), cases per pallet unknown. DATA_AUDIT T06, T26 rule and G15 amended. ADR-006 note.
+  email-to-dana.md and CLAUDE.md updated.
+- Database:
+  - **Load run #5** (63 s, 0 errors) refreshed the clean layer and kept all five vendor_settings rows.
+  - Those rows' provenance notes were updated by a one-off script, with one `audit_log` row each (actor Ishan, action
+    `vendor_settings.confirm_from_email`). Values were asserted unchanged before updating.
+**Impact:**
+- Every email default is confirmed except Q3. **Late POs (PO-260394 SHR-2125 800 cs, PO-260376 PAN-0709 400 cs,
+  PO-260407 CAL-RING 300 cs) will not count as incoming at all** in Phase 3.
+- Items they would cover must be called out. Expect SHR-2125, PAN-0709 and CAL-RING to look worse than the §7 answer
+  key, which assumed arrival around Nov 23. This is a client-driven change, not tuning.
+- Golden fact G15 is amended accordingly.
+**Decisions made (and by whom):**
+- **Dana** changed the late-PO rule.
+- **Claude's reading, to confirm with Ishan:** "don't assume they'll arrive within a week" means don't count them
+  until she types a date (the cautious reading), rather than assuming some later date.
+- "Only covered by a late PO" will be shown when an item looks fine only if its late PO arrives.
+**AI mistakes caught or corrected:** None. Before touching any number, Claude checked that the confirmed values already
+matched the seeds and the DB (they did).
+**Follow-ups:**
+- Confirm the Q3 reading.
+- Harbor $ per month needs cases per pallet (or pallets in use) per item. Suggest asking in the planned validation email (§4.5).
+- Phase 3 is waiting for "go".

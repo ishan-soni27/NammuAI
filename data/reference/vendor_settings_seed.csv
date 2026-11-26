@@ -1,6 +1,6 @@
 vendor_code,lead_time_days,safety_days,order_cycle_days,source,note
-BXE,84,14,7,"Call 00:02:25 (Vietnam 10-12 wks; upper bound 12 used, email Q1) + call 00:08:30 (about 2 wks extra on imports)","BlueTide says 56 (the old 8 wks). Pending Dana (A01, A02)"
-AFS,42,14,7,"Call 00:02:25 (Chile about 6 wks) + call 00:08:30 (import cushion)","BlueTide lead time is blank. Pending Dana (A01, A02)"
-MNP,14,7,7,"Call 00:02:25 (Canada about 2 wks) + call 00:08:30 (Canada cushion is 'less'; 7 assumed, email Q2)","Matches BlueTide 14. Cushion pending Dana (A02)"
-ASP,28,7,7,"BlueTide value (not discussed on the call); email Q1 guess Alaska 4 wks, Q2 guess 1 wk","Pending Dana (A01, A02)"
-DLC,21,7,7,"BlueTide text '2-3 wks', upper bound used; email Q1 guess Maine 3 wks, Q2 guess 1 wk","Pending Dana (A01, A02)"
+BXE,84,14,7,"Call 00:02:25 (Vietnam 10-12 wks) + call 00:08:30 (about 2 wks extra on imports); Dana's email 2026-11-26 Q1: 'Use the full 12 for Vietnam'","BlueTide says 56 (the old 8 wks). Confirmed by Dana 2026-11-26: 12 weeks"
+AFS,42,14,7,"Call 00:02:25 (Chile about 6 wks) + call 00:08:30 (import cushion)","BlueTide lead time is blank. From the kickoff call (not re-asked in the email)"
+MNP,14,7,7,"Call 00:02:25 (Canada about 2 wks); cushion: Dana's email 2026-11-26 Q2 'One week is right for all three'","Matches BlueTide 14. Cushion confirmed by Dana 2026-11-26"
+ASP,28,7,7,"Dana's email 2026-11-26 Q1 (Alaska 4 wks: 'Those are all right') and Q2 (1 wk cushion)","Matches BlueTide 28. Confirmed by Dana 2026-11-26"
+DLC,21,7,7,"Dana's email 2026-11-26 Q1 (Maine 3 wks: 'Those are all right') and Q2 (1 wk cushion)","BlueTide says '2-3 wks'. Confirmed by Dana 2026-11-26: 3 weeks"

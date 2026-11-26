@@ -2,7 +2,8 @@
 
 > Sent through the recruiter, who answers as Dana would. The text below is exactly what was sent (BUILD_PROMPT §4.4).
 > **The bracketed guesses are the defaults the app uses until Dana replies.** Each one maps to a row in
-> `docs/ASSUMPTIONS.md` (A01 to A06, A16). When she replies, paste it into `docs/client/dana-replies.md`.
+> `docs/ASSUMPTIONS.md` (A01 to A06, A16). **Dana replied on 2026-11-26**: see `docs/client/dana-replies.md`.
+> She confirmed every default except Q3 (late POs), which changed.
 
 ---
 
@@ -42,7 +43,7 @@ Ishan Soni
 |---|---|---|---|
 | Q1 Lead times | BXE 84 d, ASP 28 d, DLC 21 d | `data/reference/vendor_settings_seed.csv` | A01 |
 | Q2 Cushion | 7 d for MNP, ASP, DLC (imports 14 d) | `data/reference/vendor_settings_seed.csv` | A02 |
-| Q3 Late POs | Arrive within 7 days, flagged late | `OVERDUE_PO_ASSUMED_DAYS` in `backend/app/config/business_rules.py` | A03, A18 |
+| Q3 Late POs | ~~Arrive within 7 days~~ → **not counted until Dana enters a date** (her answer), flagged late | `late_po_assumed_days` in `backend/app/config/business_rules.py` | A03, A18 |
 | Q4 QA-HOLD | Not counted, shown separately | `data/reference/locations.csv` (`is_sellable = false`) | A04 |
 | Q5 Dormant items | Treated as stopped selling | `DORMANT_NO_SALES_DAYS` in `business_rules.py` | A05 |
 | Q6 Other stockouts | None beyond SHR-1620 | `data/reference/stockout_periods.csv` | A06 |

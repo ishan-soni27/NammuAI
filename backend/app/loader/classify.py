@@ -130,6 +130,6 @@ def final_lifecycle(
         since = f"since {last_real_demand:%b %d, %Y}" if last_real_demand else "in the past year"
         return "dormant", (
             f"No real sales {since} ({rules.dormant_no_sales_days}+ days) and no open PO: treated as "
-            "stopped selling. Pending Dana (email Q5)."
+            "stopped selling."
         )
     return "active", "Selling."

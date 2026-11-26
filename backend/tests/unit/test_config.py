@@ -35,7 +35,9 @@ def test_rule_defaults_match_build_prompt_section_6() -> None:
     assert (r.six_month_line_months, r.dormant_no_sales_days, r.base_window_days) == (6, 60, 56)
     assert (r.seasonal_window_days, r.seasonal_index_min, r.seasonal_index_max) == (365, 0.4, 2.5)
     assert (r.projection_horizon_days, r.cover_forecast_days) == (182, 91)
-    assert (r.order_this_week_days, r.order_soon_days, r.overdue_po_assumed_days) == (7, 21, 7)
+    assert (r.order_this_week_days, r.order_soon_days) == (7, 21)
+    # Dana 2026-11-26: late POs are NOT assumed to arrive (the email default was 7 days).
+    assert r.late_po_assumed_days is None
     assert (r.default_lead_time_days, r.default_safety_days, r.default_order_cycle_days) == (28, 7, 7)
     assert (r.overstock_weeks, r.harbor_long_weeks) == (26, 12)
 

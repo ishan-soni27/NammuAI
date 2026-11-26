@@ -108,6 +108,10 @@ Each row should be a small, tested change. If one isn't, refactor it in Phase 6.
 ## Decisions already made by Ishan (beyond BUILD_PROMPT)
 - Frontend is **TypeScript** (strict).
 - Client files are **copied** (originals in `kestrel-bay/`, committed). Copies have distinct names (`bluetide_*.csv`, `ASSIGNMENT.md`, `KICKOFF_TRANSCRIPT.md`).
-- A PO whose re-derived ETA is **on or before** AS_OF counts as late (`<=`, not `<`), so PO-260407 gets ETA Nov 23 (A18).
+- A PO whose re-derived ETA is **on or before** AS_OF counts as late (`<=`, not `<`), so PO-260407 is late (A18).
+- **Dana's reply (2026-11-26, docs/client/dana-replies.md):** every email default confirmed EXCEPT late POs. They are
+  **not counted as coming** until she types a real date (`late_po_assumed_days = None`), and items only a late PO would
+  cover must be called out. BUILD_PROMPT §6.6 / §7 still describe the old "+7 days" rule; this overrides it.
+  Harbor costs $30/pallet/month (cases per pallet still unknown).
 - **One Vercel project hosts both the website and the API** (Vercel Services), not Render + Vercel (2026-11-25, ADR-002).
   BUILD_PROMPT §8.1/§15 still say Render; this overrides it.

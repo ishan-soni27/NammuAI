@@ -121,7 +121,8 @@ the raw layer. Types are parsed only in the cleaning step.
   at Harbor, status blank). PAN-1012 last sale 2026-02-10 (no stock, status `A`).
 - **Why it matters:** Dana: "Some items we just stopped buying" (00:04:40).
 - **Rule:** lifecycle `dormant` when there is no real demand in the last `DORMANT_NO_SALES_DAYS` (60) days AND no open PO.
-  Never suggest reordering. Stock appears in "stuck with". **Pending Dana (email Q5, A05).** Dana can reactivate an item via `item_settings`.
+  Never suggest reordering. Stock appears in "stuck with". **Confirmed by Dana 2026-11-26** ("we've stopped carrying all
+  three. Flag what's left at Harbor so I can clear it", A05). Dana can reactivate an item via `item_settings`.
 - **Test:** `test_T06_dormant_items_detected` (P2) · golden G03, G17.
 
 ### T07 Fresh items
@@ -219,9 +220,11 @@ Classification order (§6.2): cancelled → transfer → credit → sample → o
   PO-260376 PAN-0709 remaining 400 expected 2026-09-14; PO-260407 CAL-RING 300 cs expected 2026-10-19.
 - **Why it matters:** Dana: "The quantities are right, the dates aren't… I have open POs that say they arrived three weeks
   ago but are still on the water" (00:08:30).
-- **Rule (§6.6, amended by A18):** `candidate = max(BlueTide date, order_date + effective lead time)`. A date set by Dana wins.
-  Otherwise, if `candidate <= AS_OF`, ETA = AS_OF + 7 days and it is flagged "late, confirm with vendor". Otherwise ETA = candidate.
-  It is flagged "BlueTide date has passed" whenever BlueTide's date < AS_OF.
+- **Rule (§6.6, amended by A18 and by Dana's reply, A03):** `candidate = max(BlueTide date, order_date + effective lead
+  time)`. A date set by Dana wins. Otherwise, if `candidate <= AS_OF`, the PO is **late**: flagged "late, confirm with
+  vendor" and **not counted as coming** until Dana types in a real date (Dana 2026-11-26: "please don't assume they'll
+  arrive within a week"). Any item that only a late PO would cover is called out ("If an item is only covered by a late
+  PO, I want to see that"). Otherwise ETA = candidate. Flagged "BlueTide date has passed" whenever BlueTide's date < AS_OF.
 - **Test:** `test_T26_overdue_open_po_flagged` (P2: the loader flags BlueTide dates that have passed) and
   `test_T26_po_eta_rederived` (P3: the engine re-derives the arrival date) · golden G15.
 
@@ -277,7 +280,7 @@ the planning engine (Phase 3).
 | G12 | 51 sales rows parsed from MM/DD/YYYY | ✅ |
 | G13 | Committed (OPEN, real demand): SHR-1620 = 201 cs, CRAB-SNW5 = 221 cs, SHR-2125 = 91 cs; 159 open real-demand lines | ✅ |
 | G14 | POs: 2 exact duplicate rows removed; 14 open lines; incoming SHR-2630 = 500, HAD-LOIN = 200, PAN-0709 = 400, POL-BLK = 18,000 lb; PO-260423 (cancelled) contributes 0 | ✅ (2 dups, 14 open) |
-| G15 | ETAs: PO-260443 SHR-1620 = 2027-01-25 (BlueTide 2026-12-28). PO-260394 SHR-2125 and PO-260376 PAN-0709 are late, assumed 2026-11-23. **PO-260407 CAL-RING is late, assumed 2026-11-23 (added by A18).** PO-260436 PAN-0507 = 2026-12-28 (BlueTide 2026-11-30). PO-260444 LOB-T810 = 2026-11-27 (BlueTide 2026-11-23) | ✅ (hand-simulated rule) |
+| G15 | ETAs: PO-260443 SHR-1620 = 2027-01-25 (BlueTide 2026-12-28). PO-260394 SHR-2125, PO-260376 PAN-0709 and **PO-260407 CAL-RING (A18)** are late and **not counted as coming** (Dana 2026-11-26; the original fact assumed 2026-11-23). PO-260436 PAN-0507 = 2026-12-28 (BlueTide 2026-11-30). PO-260444 LOB-T810 = 2026-11-27 (BlueTide 2026-11-23) | ✅ (hand-simulated rule); amended by Dana's reply |
 | G16 | Effective lead times BXE 84, AFS 42, MNP 14, ASP 28, DLC 21. System values BXE 56, AFS null, DLC 21 (parsed from "2-3 wks"), MNP 14, ASP 28 | Inputs ✅ |
 | G17 | No legacy, dormant or fresh item ever appears in the order list | Needs the engine (P3) |
 
