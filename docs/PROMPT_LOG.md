@@ -499,3 +499,26 @@ opens an interactive screen. Claude pointed Ishan to `/doctor` (or `! claude doc
 **Decisions made (and by whom):** None.
 **AI mistakes caught or corrected:** None.
 **Follow-ups:** Phase 5 (the screens) is still waiting for "go".
+
+## #21 | 2026-11-26 09:48 UTC | "claude doctor" (again)
+**Prompt (simplified):** `claude doctor` again.
+**What changed:** Nothing in the repo. Written late because plan mode was active.
+**Impact:** Claude ran `claude doctor` read-only (stdin closed, time limit):
+- **No installation issues found**: native install, v2.1.332, darwin-arm64.
+- The API answered in 1.2 s and sign-in in 1.6 s.
+- Auto-updates are enabled, but the **last update attempt failed (install_failed) on 2026-11-26**. Not urgent; Ishan
+  can run `! claude update` or `/doctor`.
+- Remote Control is off by org policy.
+**Decisions made (and by whom):** Claude didn't update Claude Code itself, because that changes Ishan's installation.
+**AI mistakes caught or corrected:** None.
+**Follow-ups:** None for the project.
+
+## #22 | 2026-11-26 09:48 UTC | "go": Phase 5, the screens
+**Prompt (simplified):** Go ahead with Phase 5 (plan approved: Monday screen, item page with chart, lead times, data
+notes, activity, and all states).
+**What changed:** See the commits that follow. This entry is completed at the Phase 5 stop.
+**Impact:** In progress.
+**Decisions made (and by whom):** Ishan approved the Phase 5 plan. Claude: season windows (Christmas, Lent 2027) go in
+business_rules.py rather than the frontend; lead times are edited in weeks; Recharts is pinned at 3.11.1.
+**AI mistakes caught or corrected:** In progress.
+**Follow-ups:** Screenshots, then the Phase 6 stop.
