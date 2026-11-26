@@ -17,6 +17,7 @@ How to change this ("show a new number on the dashboard", §17)
 
 from __future__ import annotations
 
+import datetime as dt
 from datetime import date, datetime
 from typing import Any, Literal
 
@@ -100,6 +101,10 @@ class ItemCard(BaseModel):
     late_qty: float = Field(description="Late POs with no date (shown, not counted).")
     weeks_of_cover: float | None
     covered_only_by_late_po: bool
+    instruction: str | None = Field(
+        default=None,
+        description="Only for items a late PO alone would cover: what to do, in one sentence (ADR-033).",
+    )
     if_late_arrive_status: Status | None
     if_late_arrive_order_at_least: float | None
     handled_note: HandledNoteOut | None
@@ -270,6 +275,18 @@ class ItemSettingsOut(BaseModel):
     updated_by: str | None
 
 
+class BreakdownRowOut(BaseModel):
+    """One line of the numbers-only "why" (ADR-033). `link` is the item-page table with the source rows."""
+
+    key: str
+    label: str
+    qty: float | None
+    unit: str | None
+    date: dt.date | None  # (dt.date: a field called "date" can't also use the bare name as its type)
+    detail: str | None
+    link: str | None
+
+
 class SeasonMarkerOut(BaseModel):
     label: str
     start: date
@@ -293,7 +310,7 @@ class ItemDetailOut(BaseModel):
     demand: DemandOut
     projection: list[PointOut]
     if_late_arrive_projection: list[PointOut] | None
-    explanation: list[str]
+    breakdown: list[BreakdownRowOut]
     settings: ItemSettingsOut | None
     aliases: list[str]
     handled_notes: list[HandledNoteOut]

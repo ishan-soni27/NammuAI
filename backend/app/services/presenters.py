@@ -63,6 +63,7 @@ def card(p: ItemPlan, as_of: date, horizon_days: int, handled: s.HandledNoteOut 
         late_qty=sum(line.qty for line in p.late_incoming),
         weeks_of_cover=p.weeks_of_cover,
         covered_only_by_late_po=p.covered_only_by_late_po,
+        instruction=p.instruction,
         if_late_arrive_status=p.if_late_arrive.status if p.if_late_arrive else None,
         if_late_arrive_order_at_least=p.if_late_arrive.order_at_least if p.if_late_arrive else None,
         handled_note=handled,

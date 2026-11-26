@@ -1,19 +1,19 @@
-"""Plain-English "why" steps for an item (BUILD_PROMPT §8.4, §9.3, §9.5).
+"""The numbers-only "why" for an item, and the one instruction for late-PO items (ADR-033).
 
 Dana 00:11:00: "If it says I'm out in three weeks, I want to click in and see what I have, what
-I'm selling and what's coming." These steps are built from the SAME numbers the engine used, so
-the explanation can never disagree with the result.
+I'm selling and what's coming." Ishan (2026-11-26): show that as numbers, not sentences that read
+like a memo. `breakdown` returns one row per number the engine used, with its date and a link to the
+table on the item page that holds the source rows, so the "why" can never disagree with the result.
 
 Copy rules (§9.5): Dana's words ("promised to customers", "on hold", "runs out", "order at
-least"), always with units, dates like "Mon Dec 14" plus "in 4 weeks". Never "SKU", "UOM",
-"safety stock" or "committed".
+least"), always with units. Never "SKU", "UOM", "safety stock" or "committed".
 """
 
 from __future__ import annotations
 
 from datetime import date
 
-from app.planning.types import CommittedLine, DemandProfile, IncomingLine, OnHand, Scenario
+from app.planning.types import BreakdownRow, CommittedLine, DemandProfile, IncomingLine, OnHand, Scenario
 
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -54,7 +54,33 @@ def weeks(days: int) -> str:
     return f"{days // 7} week{'s' if days // 7 != 1 else ''}" if days % 7 == 0 else f"{days} days"
 
 
-def explain(
+def _late_list(late: tuple[IncomingLine, ...], u: str) -> str:
+    """'PO-260394 (800 cases)', or 'PO-x (N cases) and PO-y (M cases)'."""
+    parts = [f"{line.po_no or line.reference} ({qty(line.qty, u)})" for line in late]
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+
+
+def late_po_instruction(sell_uom: str, order_at_least: float, late: tuple[IncomingLine, ...]) -> str:
+    """The one instruction for an item that only a late PO would cover (Dana Q3; wording Ishan's).
+
+    Replaces two lines that contradicted each other ("Order at least N" and "if the late PO shows up
+    you wouldn't need to order"). Examples:
+      "Order at least 127 cases, unless PO-260394 (800 cases) is really coming. Ask the supplier for its
+       date and set it here, and these numbers update."
+      "Nothing to order today, but PO-260376 (400 cases) is late. Ask the supplier ..."
+    """
+    pos = _late_list(late, sell_uom)
+    ask = "Ask the supplier for its date and set it here, and these numbers update."
+    if len(late) > 1:
+        ask = "Ask the suppliers for their dates and set them here, and these numbers update."
+    if order_at_least > 0:
+        coming = "is" if len(late) == 1 else "are"
+        return f"Order at least {qty(order_at_least, sell_uom)}, unless {pos} {coming} really coming. {ask}"
+    late_word = "is" if len(late) == 1 else "are"
+    return f"Nothing to order today, but {pos} {late_word} late. {ask}"
+
+
+def breakdown(
     *,
     as_of: date,
     sell_uom: str,
@@ -67,138 +93,194 @@ def explain(
     vendor_name: str,
     lead_time_days: int,
     safety_days: int,
+    horizon_days: int,
     new_order_arrival: date,
     confirmed: Scenario,
     if_late_arrive: Scenario | None,
-    covered_only_by_late_po: bool,
-) -> tuple[str, ...]:
-    """The numbered steps of the item drill-down (§9.3), as plain sentences."""
+) -> tuple[BreakdownRow, ...]:
+    """The rows that apply, in reading order: what you have, what's promised, what's coming, how fast
+    it sells, so when it runs out, and what to do. Each number is the one the engine used."""
     u = sell_uom
-    steps: list[str] = []
-
-    # 1. What you can sell
-    where = ", ".join(f"{loc} {qty(v, u)}" for loc, v in sorted(on_hand.sellable_by_location.items()) if v)
+    rows: list[BreakdownRow] = []
+    rows.append(
+        BreakdownRow(
+            "can_sell",
+            "Can sell now",
+            on_hand.sellable,
+            unit_word(u, on_hand.sellable),
+            detail=" · ".join(
+                f"{loc} {round(v):,}" for loc, v in sorted(on_hand.sellable_by_location.items()) if v
+            )
+            or None,
+            link="#have",
+        )
+    )
     not_counted = [
-        f"{qty(v, u)} {label}"
-        for v, label in [
-            (on_hand.on_hold, "on hold"),
-            (on_hand.damaged, "damaged"),
-            (on_hand.expired, "expired"),
-        ]
+        (label, v)
+        for label, v in (
+            ("on hold", on_hand.on_hold),
+            ("damaged", on_hand.damaged),
+            ("expired", on_hand.expired),
+        )
         if v > 0
     ]
-    step = f"You can sell {qty(on_hand.sellable, u)} now" + (f" ({where})." if where else ".")
     if not_counted:
-        step += " Not counted: " + ", ".join(not_counted) + "."
-    steps.append(step)
-
-    # 2. Promised to customers
-    total = sum(c.qty for c in committed)
+        total = sum(v for _, v in not_counted)
+        rows.append(
+            BreakdownRow(
+                "not_counted",
+                "Not counted",
+                total,
+                unit_word(u, total),
+                detail=" · ".join(f"{label} {round(v):,}" for label, v in not_counted),
+                link="#have",
+            )
+        )
     if committed:
+        total = sum(c.qty for c in committed)
         biggest = max(committed, key=lambda c: c.qty)
-        ship_dates = [c.ship_date for c in committed if c.ship_date]
-        span = f", shipping {day(min(ship_dates))} to {day(max(ship_dates))}" if ship_dates else ""
-        steps.append(
-            f"Promised to customers: {qty(total, u)} on {len(committed)} open "
-            f"order{'s' if len(committed) != 1 else ''}"
-            f"{span}. Largest: {biggest.customer_name}, {qty(biggest.qty, u)}"
-            + (f" on {day(biggest.ship_date)}." if biggest.ship_date else ".")
+        dates = [c.ship_date for c in committed if c.ship_date]
+        span = f", shipping {day(min(dates))} to {day(max(dates))}" if dates else ""
+        largest = f"; largest {biggest.customer_name} {round(biggest.qty):,}" + (
+            f" on {day(biggest.ship_date)}" if biggest.ship_date else ""
         )
-    else:
-        steps.append("Nothing is promised to customers yet.")
-
-    # 3. On the way
-    parts = []
+        n = len(committed)
+        rows.append(
+            BreakdownRow(
+                "promised",
+                "Promised to customers",
+                total,
+                unit_word(u, total),
+                detail=f"{n} open order{'s' if n != 1 else ''}{span}{largest}",
+                link="#promised",
+            )
+        )
     for line in incoming:
-        assert line.eta is not None
-        text = f"{line.reference}: {qty(line.qty, u)} arriving about {day(line.eta)}"
         if line.eta_source.startswith("Set by"):
-            said = f"BlueTide said {day(line.bluetide_date)}; " if line.bluetide_date else ""
-            text += f" ({said}date set by {line.eta_source.removeprefix('Set by ')})"
+            note = ("date " + line.eta_source[0].lower() + line.eta_source[1:]) + (
+                f"; BlueTide said {day(line.bluetide_date)}" if line.bluetide_date else ""
+            )
         elif line.bluetide_date and line.bluetide_date != line.eta:
-            text += f" (BlueTide said {day(line.bluetide_date)}; corrected to the real lead time)"
-        parts.append(text)
-    if parts:
-        steps.append("On the way: " + "; ".join(parts) + ".")
-    else:
-        steps.append("Nothing is on the way with a date.")
+            note = f"BlueTide says {day(line.bluetide_date)}; the real lead time says later"
+        else:
+            note = line.eta_source.lower() if line.source == "po" else "your handled note"
+        rows.append(
+            BreakdownRow(
+                "on_the_way",
+                f"On the way: {line.reference}",
+                line.qty,
+                unit_word(u, line.qty),
+                on=line.eta,
+                detail=note,
+                link="#on-the-way",
+            )
+        )
     for line in late:
-        said = f"BlueTide said {day(line.bluetide_date)}" if line.bluetide_date else "no date given"
-        steps.append(
-            f"Late, date unknown: {line.reference}, {qty(line.qty, u)} ({said}, nothing received). "
-            "Not counted until you enter a real date."
+        said = f"BlueTide said {day(line.bluetide_date)}" if line.bluetide_date else "no date in BlueTide"
+        rows.append(
+            BreakdownRow(
+                "late",
+                f"Late, not counted: {line.reference}",
+                line.qty,
+                unit_word(u, line.qty),
+                detail=f"{said}; nothing received",
+                link="#late",
+            )
         )
-
-    # 4. How fast it's selling, and what the season does next
     per_week = demand.base_rate_per_day * 7
-    upcoming = [(as_of.month + k - 1) % 12 + 1 for k in range(0, 3)]
-    season = ", ".join(f"{MONTHS[m - 1]} {demand.index_by_month.get(m, 1.0):.1f}×" for m in upcoming)
-    steps.append(
-        f"Selling about {qty(per_week, u)} a week over the last {weeks(demand.base_days)}. "
-        f"{category} season ahead compared with an average month: {season}."
-    )
-
-    # 5. So it runs out about...
-    if confirmed.run_out_date:
-        steps.append(
-            f"So it runs out about {day(confirmed.run_out_date)} ({relative(confirmed.run_out_date, as_of)})."
+    rows.append(
+        BreakdownRow(
+            "selling",
+            "Selling now",
+            round(per_week, 1),
+            f"{unit_word(u, per_week)} a week",
+            detail=f"last {weeks(demand.base_days)}",
+            link="#demand",
         )
-    else:
-        steps.append("At this rate it lasts more than 6 months.")
-
-    # 6. A new order placed today lands about...
-    steps.append(
-        f"A new order placed today lands about {day(new_order_arrival)} "
-        f"({vendor_name}, {weeks(lead_time_days)} from order to our building)."
     )
-
-    # 7. Order at least / shortfall
+    upcoming = [(as_of.month + k - 1) % 12 + 1 for k in range(0, 3)]
+    rows.append(
+        BreakdownRow(
+            "season",
+            "Season ahead",
+            detail=f"{category}: "
+            + " · ".join(f"{MONTHS[m - 1]} {demand.index_by_month.get(m, 1.0):.1f}×" for m in upcoming),
+            link="#demand",
+        )
+    )
+    rows.append(
+        BreakdownRow(
+            "runs_out",
+            "Runs out",
+            on=confirmed.run_out_date,
+            detail=relative(confirmed.run_out_date, as_of)
+            if confirmed.run_out_date
+            else f"not within {weeks(horizon_days)}",
+            link="#chart",
+        )
+    )
+    rows.append(
+        BreakdownRow(
+            "new_order_lands",
+            "A new order placed today lands",
+            on=new_order_arrival,
+            detail=f"{vendor_name}, {weeks(lead_time_days)} to arrive + {weeks(safety_days)} cushion",
+            link="#chart",
+        )
+    )
     if confirmed.status == "TOO_LATE":
         back = confirmed.back_in_stock_date or new_order_arrival
-        restocked_by = (
-            "when stock already on the way lands"
-            if back < new_order_arrival
-            else "when a new order could land"
-        )
-        steps.append(
-            f"That's too late: you'll be short about {qty(confirmed.gap_qty, u)} between "
-            f"{day(confirmed.run_out_date or as_of)} and {day(back)} ({restocked_by}). Ask the vendor to "
-            "expedite or find another source."
-        )
-        if confirmed.order_at_least == 0:
-            steps.append(
-                f"Ordering more today wouldn't close that gap: it would land {day(new_order_arrival)}, "
-                "after the stock already on the way, which covers you from then on."
+        by = "stock on the way lands" if back < new_order_arrival else "a new order lands"
+        rows.append(
+            BreakdownRow(
+                "short",
+                "Short",
+                confirmed.gap_qty,
+                unit_word(u, confirmed.gap_qty),
+                on=confirmed.run_out_date,
+                detail=f"until {day(back)}, when {by}",
+                link="#chart",
             )
-    if confirmed.order_at_least > 0:
-        steps.append(
-            f"Order at least {qty(confirmed.order_at_least, u)} to get you to the next Monday order's "
-            f"arrival plus {weeks(safety_days)} of cushion."
         )
-    elif confirmed.status in {"OK", "NO_RECENT_SALES"}:
-        steps.append("No order needed this week.")
-
+    if confirmed.status in ("TOO_LATE", "ORDER_THIS_WEEK", "ORDER_SOON") or confirmed.order_at_least > 0:
+        order_by = confirmed.order_by_date
+        on = order_by if order_by and order_by >= as_of else None  # the date column: order by
+        if confirmed.order_at_least == 0 and confirmed.status == "TOO_LATE":
+            on, note = None, f"an order today lands {day(new_order_arrival)}, after the stock on the way"
+        elif confirmed.order_at_least == 0:
+            note = "nothing needed today; order by this date"
+        else:
+            note = f"covers to next Monday's order + {weeks(safety_days)} cushion"
+            if order_by and order_by < as_of:
+                note = f"order now (was due {day(order_by)}); {note}"
+        rows.append(
+            BreakdownRow(
+                "order_at_least",
+                "Order at least",
+                confirmed.order_at_least,
+                unit_word(u, confirmed.order_at_least),
+                on=on,
+                detail=note,
+                link="#chart",
+            )
+        )
     if late and if_late_arrive is not None:
-        if covered_only_by_late_po:
-            steps.append(
-                "Only covered by the late PO: if it shows up now, this item would be fine"
-                + (
-                    f" until about {day(if_late_arrive.run_out_date)}."
-                    if if_late_arrive.run_out_date
-                    else " for more than 6 months."
-                )
+        runs = (
+            f"runs out {day(if_late_arrive.run_out_date)}"
+            if if_late_arrive.run_out_date
+            else f"lasts beyond {weeks(horizon_days)}"
+        )
+        order = (
+            f"order at least {qty(if_late_arrive.order_at_least, u)}"
+            if if_late_arrive.order_at_least > 0
+            else "nothing to order"
+        )
+        rows.append(
+            BreakdownRow(
+                "if_late_arrives",
+                "If the late PO arrives today",
+                detail=f"{runs} · {order}",
+                link="#late",
             )
-        elif if_late_arrive.run_out_date != confirmed.run_out_date:
-            steps.append(
-                "Even if the late PO showed up today, it would only push the run-out to about "
-                + (day(if_late_arrive.run_out_date) if if_late_arrive.run_out_date else "beyond 6 months")
-                + "."
-            )
-        if if_late_arrive.order_at_least != confirmed.order_at_least:
-            instead = (
-                f"order at least {qty(if_late_arrive.order_at_least, u)} instead"
-                if if_late_arrive.order_at_least > 0
-                else "you wouldn't need to order"
-            )
-            steps.append(f"If the late PO does show up, {instead} (so you don't double order).")
-    return tuple(steps)
+        )
+    return tuple(rows)

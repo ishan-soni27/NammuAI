@@ -64,7 +64,8 @@ def test_item_drill_down_explains_the_number(api: TestClient) -> None:
     assert any(p["customer_name"] == "Seabright Markets" and p["qty"] == 120 for p in d["promised"])
     reasons = {lot["location_code"]: lot["reason"] for lot in d["lots"]}
     assert reasons["QA-HOLD"].startswith("On QA hold")
-    assert d["explanation"][0].startswith("You can sell 480 cases now")
+    first = d["breakdown"][0]
+    assert (first["key"], first["qty"], first["unit"], first["link"]) == ("can_sell", 480, "cases", "#have")
     assert len(d["projection"]) == 183 and d["demand"]["season_by_month"]["12"] > 1.4
     assert {"label": "Lent 2027", "start": "2027-02-10", "end": "2027-03-28"} in d["season_markers"]
 

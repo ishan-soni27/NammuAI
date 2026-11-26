@@ -162,7 +162,8 @@ def test_earlier_po_ends_the_shortage_before_a_new_order_could() -> None:
     p = one(run(lots=[lot(qty=10)], pos=[po(qty=100, ordered=D(-20), bluetide=D(12))], lead=30))
     assert p.confirmed.status == "TOO_LATE"
     assert p.confirmed.back_in_stock_date == D(12)
-    assert any("when stock already on the way lands" in s for s in p.explanation)
+    short = next(r for r in p.breakdown if r.key == "short")
+    assert short.on == D(10) and "when stock on the way lands" in (short.detail or "")
 
 
 def test_weeks_of_cover() -> None:
@@ -179,7 +180,10 @@ def test_item_only_covered_by_a_late_po_is_called_out() -> None:
     assert [line.reference for line in p.late_incoming] == ["PO-LATE line 1"] and p.incoming == ()
     assert p.if_late_arrive is not None and p.if_late_arrive.status == "OK"
     assert p.covered_only_by_late_po
-    assert any("Only covered by the late PO" in s for s in p.explanation)
+    # One instruction (ADR-033), not "order at least N" plus "if it shows up you needn't order".
+    assert p.instruction is not None and "PO-LATE (500 cases)" in p.instruction
+    assert p.instruction.endswith("Ask the supplier for its date and set it here, and these numbers update.")
+    assert {r.key for r in p.breakdown} >= {"late", "if_late_arrives"}
 
 
 def test_late_po_not_enough_is_not_flagged_as_covering() -> None:
@@ -209,7 +213,8 @@ def test_handled_note_without_qty_only_changes_display() -> None:
 def test_inactive_items_are_never_planned_but_dana_can_revive_one() -> None:
     dormant = item(lifecycle_status="dormant", lifecycle_reason="No real sales since Apr 16, 2026")
     p = one(run(items=[dormant], lots=[lot(qty=10)]))
-    assert p.confirmed.status == "NOT_PLANNED" and p.explanation == ("No real sales since Apr 16, 2026",)
+    assert p.confirmed.status == "NOT_PLANNED"
+    assert [(r.key, r.detail) for r in p.breakdown] == [("not_planned", "No real sales since Apr 16, 2026")]
     revived = one(run(items=[dormant], lots=[lot(qty=10)], item_settings=[ItemSettingInput("X", "active")]))
     assert revived.confirmed.status == "TOO_LATE"
 
@@ -311,3 +316,22 @@ def test_open_orders_count_once_by_default() -> None:
     assert once.demand.base_rate_per_day == pytest.approx(1.0)
     assert also_in_rate.demand.base_rate_per_day > once.demand.base_rate_per_day
     assert once.committed_total == also_in_rate.committed_total == 60  # deducted on ship date either way
+
+
+def test_the_instruction_names_every_late_po() -> None:
+    from app.planning.explain import late_po_instruction
+    from app.planning.types import IncomingLine
+
+    def late(po_no: str, qty: float) -> IncomingLine:
+        return IncomingLine(
+            "po", f"{po_no} line 1", qty, None, "Late: date unknown", None, True, (), po_no, 1
+        )
+
+    two = (late("PO-1", 100), late("PO-2", 50))
+    assert late_po_instruction("CS", 30, two) == (
+        "Order at least 30 cases, unless PO-1 (100 cases) and PO-2 (50 cases) are really coming. "
+        "Ask the suppliers for their dates and set them here, and these numbers update."
+    )
+    assert late_po_instruction("LB", 0, two[:1]).startswith(
+        "Nothing to order today, but PO-1 (100 lb) is late."
+    )

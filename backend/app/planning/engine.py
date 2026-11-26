@@ -22,12 +22,13 @@ from datetime import timedelta
 
 from app.config.business_rules import BusinessRules
 from app.planning.demand import daily_forecast, demand_profile
-from app.planning.explain import explain
+from app.planning.explain import breakdown, late_po_instruction
 from app.planning.projection import build_scenario
 from app.planning.seasonality import compute_seasonal_index, real_demand_by_day, stockout_days
 from app.planning.stuck import stuck_list
 from app.planning.supply import incoming_for_item, summarize_on_hand, vendor_terms
 from app.planning.types import (
+    BreakdownRow,
     CommittedLine,
     HandledNoteInput,
     ItemPlan,
@@ -156,7 +157,7 @@ def plan(inputs: PlanningInputs, rules: BusinessRules) -> PlanResult:
                 if_late_arrive=if_late,
                 covered_only_by_late_po=covered_only,
                 active_handled_note=notes[-1] if notes else None,
-                explanation=explain(
+                breakdown=breakdown(
                     as_of=as_of,
                     sell_uom=item.sell_uom,
                     on_hand=stock,
@@ -168,13 +169,17 @@ def plan(inputs: PlanningInputs, rules: BusinessRules) -> PlanResult:
                     vendor_name=vendor_name,
                     lead_time_days=lead,
                     safety_days=safety,
+                    horizon_days=horizon,
                     new_order_arrival=new_order_arrival,
                     confirmed=confirmed,
                     if_late_arrive=if_late,
-                    covered_only_by_late_po=covered_only,
                 )
                 if lifecycle[code] == "active"
-                else (item.lifecycle_reason,),
+                else (BreakdownRow("not_planned", "Not planned", detail=item.lifecycle_reason),),
+                # One instruction instead of two contradicting lines (Dana Q3; ADR-033).
+                instruction=late_po_instruction(item.sell_uom, confirmed.order_at_least, tuple(late))
+                if covered_only
+                else None,
             )
         )
 

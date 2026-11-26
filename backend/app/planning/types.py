@@ -207,6 +207,20 @@ class DemandProfile:
 
 
 @dataclass(frozen=True)
+class BreakdownRow:
+    """One line of an item's numbers-only "why" (ADR-033, explain.breakdown): a label with its number
+    and date, a short computed note, and the item-page table that holds the source rows."""
+
+    key: str  # "can_sell", "promised", "on_the_way", "late", "selling", "season", "runs_out", ...
+    label: str
+    qty: float | None = None
+    unit: str | None = None  # "cases", "lb", "cases a week"
+    on: date | None = None  # the row's date (the API calls it "date")
+    detail: str | None = None  # e.g. "NB 260 · PVD 80 · HCS 140"
+    link: str | None = None  # "#have", "#promised", "#on-the-way", "#late", "#demand", "#chart"
+
+
+@dataclass(frozen=True)
 class ProjectionPoint:
     day: date
     stock: float  # end-of-day stock (can go negative: that's the shortfall)
@@ -250,7 +264,8 @@ class ItemPlan:
     if_late_arrive: Scenario | None  # None when the item has no late POs
     covered_only_by_late_po: bool
     active_handled_note: HandledNoteInput | None
-    explanation: tuple[str, ...]
+    breakdown: tuple[BreakdownRow, ...]  # the numbers-only "why" (explain.breakdown)
+    instruction: str | None  # only for items a late PO alone would cover (explain.late_po_instruction)
 
 
 @dataclass(frozen=True)

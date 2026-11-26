@@ -217,7 +217,12 @@ def item_detail(session: Session, rules: BusinessRules, raw_code: str) -> s.Item
         ),
         projection=_points(plan_.confirmed),
         if_late_arrive_projection=_points(plan_.if_late_arrive) if plan_.if_late_arrive else None,
-        explanation=list(plan_.explanation),
+        breakdown=[
+            s.BreakdownRowOut(
+                key=r.key, label=r.label, qty=r.qty, unit=r.unit, date=r.on, detail=r.detail, link=r.link
+            )
+            for r in plan_.breakdown
+        ],
         settings=(
             s.ItemSettingsOut(
                 item_code=code,

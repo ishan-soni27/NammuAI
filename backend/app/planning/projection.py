@@ -117,8 +117,12 @@ def build_scenario(
         back_day = floored.last_lost_day + 1 if floored.last_lost_day is not None else lead_time_days
         back_in_stock = as_of + timedelta(days=min(back_day, lead_time_days))
 
+    # The chart shows the shelf: sales lost while out of stock are lost, not paid back when stock
+    # lands (§6.9), so it uses the floored balance. (The plain one carried the lost sales forward and
+    # showed SHR-1620 at ~218 cases when its Jan 25 PO lands instead of ~590; ADR-033.) Run-out and
+    # status still come from the plain balance: the first day demand can't be met.
     points = tuple(
         ProjectionPoint(as_of + timedelta(days=d), round(value, 3))
-        for d, value in enumerate(plain.end_of_day_stock)
+        for d, value in enumerate(floored.end_of_day_stock)
     )
     return Scenario(run_out, status, order_by, order_qty, gap, back_in_stock, points)
