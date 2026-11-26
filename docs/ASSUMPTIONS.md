@@ -56,6 +56,7 @@ Confirmed by Dana (date) · Decided by Ishan (date) · Assumption (not asked; ou
 | A43 | Dana's stock count vs BlueTide's | Per item, the newer count is the starting stock; for her count, receipts/picks/moves dated on or before it are already in it | Phase 6 amendment (independence) | `services/planning_inputs.py` | Approved with the plan |
 | A44 | Dana's template rows with any problem | Nothing loads until every row is right (all-or-nothing), each problem shown with file and line | Claude, Phase 6 | `services/template_import.py` | Assumption (flagged to Ishan) |
 | A45 | Imported POs whose computed arrival date has passed | Loaded as late (not counted) until she sets a real date, like BlueTide's late POs (Dana Q3) | Claude, Phase 6 | `services/template_import.py` | Assumption (flagged to Ishan) |
+| A46 | What a download holds | Every row of that list, whatever filter is on screen (the order list has every item with its status; POs and shipments every line), so Dana filters in Excel and nothing is silently left out | Claude, Phase 6 | `services/export_service.py` | Assumption (flagged to Ishan) |
 
 ## Notes for explaining these in the review
 - **Why conservative?** Every default above leans toward ordering a little early: the upper end of the lead-time range,

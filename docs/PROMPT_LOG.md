@@ -942,3 +942,42 @@ holding its cards.
   - a brand-new install needs one laptop load for the buildings;
   - files over 4.4 MB must be split;
   - "today" is still fixed at Nov 16.
+
+## #31 | 2026-11-27 19:40 UTC | "go": step 4, Download to Excel
+**Prompt (simplified):** Start step 4 of Phase 6: CSV downloads.
+**What changed:**
+- **`services/export_service.py`** builds five CSVs from the same services as the screens:
+  - the order list (every item, its status, run-out and order-by dates, how much to order, supplier, stock numbers);
+  - the stuck list (one row per lot: problem, building, at Harbor, quantity, expiry, value at cost);
+  - purchase orders (one row per line, yours and BlueTide's, with arrival and who set it);
+  - shipments (one row per line, with the lots taken);
+  - data notes (every change the loader made in the latest load, with file and line).
+  All are UTF-8 with a BOM, with ISO dates, plain numbers plus a unit column, her words for statuses, and CRLF.
+- **`api/v1/exports.py`:** `GET /exports/{list}.csv`, file named `kestrel-bay-<list>-2026-11-16.csv`; an unknown
+  list is a plain 404.
+- **Website:** a `DownloadLink` ("Download for Excel") next to What to order and What you're stuck with on Monday, and
+  in the headers of Purchase orders, Shipments and Data.
+- Docs: ADR-030, A46, PRIORITIES (P0 #13 done), CLAUDE.md (code map, playbook row for downloads).
+**Impact:**
+- **Checks:** 283 backend tests pass (5 new export tests on the real data). Ruff, build, lint and format are clean.
+- **Local:** each link downloads its file in a headless browser; no sideways scrolling at 1280 or 375 px.
+- **Live (version b37f46d):** all five downloads return 200 in 1–3 seconds, with a BOM. The order list's statuses
+  match Monday (3 too late, 6 this week, 5 soon, 16 fine), SHR-1620 reads 480 can sell, 201 promised and 600 on the
+  way, and SAL-POR6 has 1,050 cases at Harbor. The browser check passes on the live site too.
+- Screenshots: `docs/screenshots/phase6-step4/` (not committed).
+**Decisions made (and by whom):**
+- Ishan: "go".
+- Claude:
+  - a download holds every row, not the filter on screen (A46);
+  - one row per lot or line, so columns sum;
+  - CSV rather than .xlsx (no new library; opens in Excel as is);
+  - downloads aren't put in the activity log, because they change nothing.
+**AI mistakes caught or corrected:**
+- **Format-skip markers again.** The first draft packed several columns per line with `# fmt: skip`; they were
+  removed before the first lint, and the formatter put one column per line. One long header line in the router was
+  split by hand.
+- A screenshot-stitching script failed because Pillow isn't installed for the system Python; each screenshot was
+  checked on its own instead. No effect on the app.
+**Follow-ups:**
+- **Phase 6 is done.** Next, when Ishan says: the Harbor storage calculator (P1 #1), then the README and demo phase.
+- Still open: Ishan to confirm the Vercel cron.

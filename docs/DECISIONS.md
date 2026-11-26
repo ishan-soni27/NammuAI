@@ -497,3 +497,33 @@ connection (the transaction pooler) has no COPY, and Vercel caps a request at 4.
 **Known limits.** Buildings still come from the reference seeds (a brand-new install needs one laptop load first);
 open customer orders aren't in the sales-history template (they're logged on the Shipments page); a file over
 4.4 MB must be split.
+
+## ADR-030 Download to Excel: one CSV per list, built from the screens' own code
+**Date:** 2026-11-27 · **Decided by:** Ishan (Phase 6 plan, step 4 "go"); details by Claude
+
+**Context.** Dana works in Excel and forwards lists to people who don't use the app. She needs the order list, the
+stuck list, the POs, the shipments and the data notes as files.
+
+**Decision.**
+- `GET /api/v1/exports/{order-list|stuck-list|purchase-orders|shipments|data-notes}.csv`, a plain link on each page
+  ("Download for Excel"); the file is named `kestrel-bay-<list>-<today>.csv`, so a folder of weekly downloads sorts.
+- **Excel-friendly on purpose:**
+  - UTF-8 with a byte-order mark, so names like "Austral Frío" aren't garbled;
+  - dates as 2026-11-16, which Excel reads as dates in any locale;
+  - numbers without units, with the unit in its own column, so columns add up;
+  - statuses in her words ("Too late", "Ordered", "Left out"), "yes"/"no" for flags;
+  - CRLF line ends.
+- **Same numbers as the screens:** each file is built from the service the page uses (`planning_service.all_items`
+  and `dashboard`, `records_service.purchase_orders`, `shipments_service.shipments`, the latest load's data issues).
+  No second copy of any rule.
+- **Every row, not the filtered view** (A46): the order list has every item with its status, PO and shipment files
+  have every line. She filters in Excel, and nothing is silently missing.
+- One row per **lot** on the stuck list and per **line** on POs and shipments, so totals can be summed.
+
+**Verified.**
+- 5 API tests on the real data: BOM, CRLF, file name, row counts against the screens' endpoints, SHR-1620's values,
+  SAL-POR6's 1,050 cases at Harbor, her PO next to BlueTide's, an unknown list is a plain 404.
+- Browser: each link downloads its file at 1280 px, with no sideways scrolling at 1280 or 375 px, locally and live.
+
+**Known limits.** CSV, not .xlsx (no formatting or several sheets). Downloads aren't recorded in the activity log
+(they change nothing; the request log has them).

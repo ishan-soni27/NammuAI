@@ -54,13 +54,14 @@ backend/app/planning/        PURE engine (no DB/clock/I/O): seasonality, demand,
                              records (Dana's records matched with BlueTide's: R1-R6 POs, R7-R10 orders/moves; ADR-027/028)
 backend/app/services/        planning_inputs (DB → engine inputs: BlueTide cached per load + Dana's records fresh),
                              records_service (POs, receipts, items, suppliers), shipments_service (orders, picks, moves,
-                             customers), import_service + template_import (imports from the website), planning_service,
+                             customers), import_service + template_import (imports from the website), export_service
+                             (CSV downloads, built from the same services as the screens), planning_service,
                              presenters (→ DTOs),
                              audit (audit rows in the same transaction, request_log, event_log)
 backend/app/api/v1/          routers: health, items (dashboard/drill-down/handled/settings/new items), suppliers (vendors,
                              new suppliers, PO dates), purchase_orders (list, create, ship, cancel, receive, undo, locations),
                              shipments (customers, orders, picks, ship/cancel/undo, stock lots, stock changes, moves),
-                             imports (upload, check, load, templates),
+                             imports (upload, check, load, templates), exports (CSV downloads for Excel),
                              activity (data notes, audit, events, load runs, settings); schemas.py; docs at /api/v1/docs
 backend/tests/               unit/ (per trap), golden/ (real data, G01–G17), api/
 frontend/src/                api/ (client, types mirroring schemas.py, queries.ts = one hook per endpoint + edits)
@@ -116,7 +117,7 @@ python3 scripts/profile_data.py
 | "Change the six-month line, cushion, thresholds" | `backend/app/config/business_rules.py` |
 | "Exclude another order or customer type" | `data/reference/excluded_orders.csv` or the classifier order in `loader/classify.py` |
 | "Show a new number on the dashboard" | Engine output (`planning/types.py`) → DTO (`api/v1/schemas.py`) → component |
-| "Export to Excel/CSV" | New endpoint reusing `planning_service`, plus a button |
+| "Add a column to a download" or "a new download" | `services/export_service.py` (header + row, plus `EXPORTS` for a new one), then `<DownloadLink list=...>` on the page |
 | "Different cushion for one item" | `item_settings.safety_days_override` (already supported) |
 | "Add a field to a PO" or "a new PO status" | Model + migration (app layer), `planning/records.py` if it changes what's counted, `services/records_service.py`, `PORow.tsx` |
 | "Count a BlueTide receipt differently" | The R1-R6 rules in `planning/records.py` (one test per rule in `tests/unit/planning/test_records.py`) |
