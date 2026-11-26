@@ -31,11 +31,11 @@ function StuckRow({ item }: { item: StuckItem }) {
   const locations = useLocations();
   const home = (locations.data ?? []).find((l) => l.is_sellable && !l.is_third_party_storage);
   return (
-    <details className="group">
+    <details className="group/stuck">
       <summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 px-4 py-3 hover:bg-ice">
         <span
           aria-hidden="true"
-          className="text-lg leading-6 text-fog transition-transform group-open:rotate-90"
+          className="text-lg leading-6 text-fog transition-transform group-open/stuck:rotate-90"
         >
           ›
         </span>

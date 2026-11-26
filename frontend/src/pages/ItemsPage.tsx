@@ -219,11 +219,11 @@ function ItemRow({
     save.mutate({ item_code: item.item_code, ...toBody(draft) });
   };
   return (
-    <details className="group">
+    <details className="group/item">
       <summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 px-4 py-3 hover:bg-ice">
         <span
           aria-hidden="true"
-          className="text-lg leading-none text-fog transition-transform group-open:rotate-90"
+          className="text-lg leading-none text-fog transition-transform group-open/item:rotate-90"
         >
           ›
         </span>

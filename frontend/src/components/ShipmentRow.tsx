@@ -228,11 +228,11 @@ export function ShipmentRow({
         ? "Cancelled"
         : `Ships ${dayWithRelative(sh.ship_date, asOf)}`;
   return (
-    <details className="group" open={defaultOpen}>
+    <details className="group/shipment" open={defaultOpen}>
       <summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 hover:bg-ice sm:grid-cols-[auto_minmax(0,14rem)_minmax(0,1fr)_auto]">
         <span
           aria-hidden="true"
-          className="text-lg leading-none text-fog transition-transform group-open:rotate-90"
+          className="text-lg leading-none text-fog transition-transform group-open/shipment:rotate-90"
         >
           ›
         </span>

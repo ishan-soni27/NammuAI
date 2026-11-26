@@ -78,7 +78,16 @@ function orderShort(card: ItemCard): string {
     : "Nothing to order today";
 }
 
-export function OrderRow({ card, asOf }: { card: ItemCard; asOf: string }) {
+export function OrderRow({
+  card,
+  asOf,
+  showStatus = true,
+}: {
+  card: ItemCard;
+  asOf: string;
+  /** False inside a status section (Too late, ...), where the section header already says it. */
+  showStatus?: boolean;
+}) {
   const [handling, setHandling] = useState(false);
   const uom = card.sell_uom;
   const itemLink = `/items/${encodeURIComponent(card.item_code)}`;
@@ -88,14 +97,25 @@ export function OrderRow({ card, asOf }: { card: ItemCard; asOf: string }) {
   // fill the gap (grid-flow-dense on the grid).
   return (
     <details
-      className={`group rounded-lg border border-l-4 border-rope bg-hull open:col-span-full ${ACCENT[status]}`}
+      className={`group/card rounded-lg border border-l-4 border-rope bg-hull open:col-span-full ${ACCENT[status]}`}
     >
       <summary className="block cursor-pointer list-none rounded-lg p-4 hover:bg-ice">
-        <span className="flex items-start justify-between gap-2">
-          <StatusChip status={status} />
-          <span className="whitespace-nowrap pt-0.5 text-sm text-fog">{card.item_code}</span>
-        </span>
-        <span className="mt-2 block font-semibold leading-snug">{itemName(card.description)}</span>
+        {showStatus ? (
+          <>
+            <span className="flex items-start justify-between gap-2">
+              <StatusChip status={status} />
+              <span className="whitespace-nowrap pt-0.5 text-sm text-fog">{card.item_code}</span>
+            </span>
+            <span className="mt-2 block font-semibold leading-snug">
+              {itemName(card.description)}
+            </span>
+          </>
+        ) : (
+          <span className="flex items-start justify-between gap-2">
+            <span className="font-semibold leading-snug">{itemName(card.description)}</span>
+            <span className="whitespace-nowrap pt-0.5 text-sm text-fog">{card.item_code}</span>
+          </span>
+        )}
         <span className="block text-sm text-fog">{keyDate(card, asOf)}</span>
         <span className="mt-3 block">
           <RunwayBar card={card} compact />
@@ -103,11 +123,11 @@ export function OrderRow({ card, asOf }: { card: ItemCard; asOf: string }) {
         <span className="mt-3 flex items-center justify-between gap-2 text-sm">
           <span className="font-semibold">{orderShort(card)}</span>
           <span className="whitespace-nowrap text-fog">
-            <span className="group-open:hidden">Details</span>
-            <span className="hidden group-open:inline">Close</span>{" "}
+            <span className="group-open/card:hidden">Details</span>
+            <span className="hidden group-open/card:inline">Close</span>{" "}
             <span
               aria-hidden="true"
-              className="inline-block transition-transform group-open:rotate-90"
+              className="inline-block transition-transform group-open/card:rotate-90"
             >
               ›
             </span>

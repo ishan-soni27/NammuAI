@@ -12,10 +12,13 @@ interface DisclosureProps {
 
 export function Disclosure({ title, defaultOpen = false, children }: DisclosureProps) {
   return (
-    <details open={defaultOpen} className="group rounded-lg border border-rope bg-hull">
+    <details open={defaultOpen} className="group/disclosure rounded-lg border border-rope bg-hull">
       <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 font-semibold">
         <span>{title}</span>
-        <span aria-hidden="true" className="text-fog transition-transform group-open:rotate-90">
+        <span
+          aria-hidden="true"
+          className="text-fog transition-transform group-open/disclosure:rotate-90"
+        >
           ›
         </span>
       </summary>

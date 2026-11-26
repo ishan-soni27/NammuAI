@@ -2,20 +2,22 @@
  * The Monday screen (BUILD_PROMPT §9.2): Dana's two questions on one page.
  *   1. What will run out before a new order can arrive?  ("What to order")
  *   2. What is she stuck with?                            ("What you're stuck with")
- * Top: the headline sentence and the counts in traffic-light colours. Each item is a dropdown row
- * (name, bar, status), so the whole list fits on one screen (Ishan, 2026-11-26). Below the order list:
+ * Top: the headline sentence and the counts in traffic-light colours. What to order is split into one
+ * dropdown per status (Too late, Order this week, Order soon), each holding a grid of item cards
+ * (Ishan, 2026-11-26). Below the order list:
  * Handled, Late or unknown (late POs and on-hold stock, never counted; ADR-021) and Everything else
  * looks fine, each closed until clicked. Two columns from 1024 px; one column on phones.
  * Fed by: GET /dashboard.
  */
 import { Link } from "react-router";
 import { useDashboard } from "../api/queries";
-import type { Dashboard } from "../api/types";
+import type { Dashboard, Status } from "../api/types";
 import { Disclosure } from "../components/Disclosure";
 import { OrderRow } from "../components/OrderRow";
 import { QueryState } from "../components/QueryState";
 import { RunwayLegend } from "../components/RunwayBar";
 import { SetPoDate } from "../components/SetPoDate";
+import { StatusGroup } from "../components/StatusGroup";
 import { StuckList } from "../components/StuckList";
 import { Term } from "../components/Term";
 import { formatShortDate, formatTimestamp } from "../lib/dates";
@@ -34,6 +36,14 @@ function itemLink(code: string, description: string) {
 // Item cards: one column on phones, two side by side from 640 px; an opened card spans the row and
 // the next cards fill in around it (grid-flow-dense).
 const GRID = "grid grid-flow-dense grid-cols-1 gap-3 sm:grid-cols-2";
+
+// What to order, one dropdown per status, most urgent first. Too late and Order this week start
+// open (they need action this week); Order soon starts closed.
+const ORDER_GROUPS: [Status, boolean][] = [
+  ["TOO_LATE", true],
+  ["ORDER_THIS_WEEK", true],
+  ["ORDER_SOON", false],
+];
 
 const TONE = {
   red: "border-red bg-red-tint text-red",
@@ -173,10 +183,25 @@ function Monday({ data }: { data: Dashboard }) {
               Nothing needs ordering right now.
             </p>
           ) : (
-            <div className={GRID}>
-              {data.order_items.map((card) => (
-                <OrderRow key={card.item_code} card={card} asOf={data.as_of} />
-              ))}
+            <div className="space-y-3">
+              {ORDER_GROUPS.map(([status, open]) => {
+                const cards = data.order_items.filter((c) => c.status === status);
+                if (cards.length === 0) return null;
+                return (
+                  <StatusGroup key={status} status={status} count={cards.length} defaultOpen={open}>
+                    <div className={GRID}>
+                      {cards.map((card) => (
+                        <OrderRow
+                          key={card.item_code}
+                          card={card}
+                          asOf={data.as_of}
+                          showStatus={Boolean(card.handled_note)}
+                        />
+                      ))}
+                    </div>
+                  </StatusGroup>
+                );
+              })}
             </div>
           )}
 
