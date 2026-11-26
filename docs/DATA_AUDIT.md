@@ -264,6 +264,8 @@ Python stdlib `csv` module, before any app code existed.
 numbers were recomputed in SQL against the loaded Supabase database (load run #4), and they match too. G15 and G17 need
 the planning engine (Phase 3).
 
+**Phase 3 status (2026-11-26):** G15 (amended by Dana's reply) and G17 pass on the real data. Trap tests `test_T15_six_month_line_flagged`, `test_T22_open_orders_deducted_on_ship_date`, `test_T23_stockout_days_excluded_from_rate`, `test_T26_po_eta_rederived` and `test_T30_age_uses_expiry_not_received` are in `backend/tests/unit/planning/test_engine_rules.py`. `scripts/compare_answer_key.py` prints the engine next to BUILD_PROMPT §7 and explains each difference.
+
 | ID | Fact | Re-checked 2026-11-25 |
 |---|---|---|
 | G01 | Latest snapshot = 2026-11-15; the 115 rows dated 2026-11-14 are excluded | ✅ |

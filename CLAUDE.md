@@ -50,7 +50,7 @@ backend/app/services/        DB → engine inputs → DTOs; audit + event writer
 backend/app/api/v1/          FastAPI routers + Pydantic schemas (prefix /api/v1, OpenAPI at /docs)
 backend/tests/               unit/ (per trap), golden/ (real data, G01–G17), api/
 frontend/src/                api/ pages/ components/ lib/ styles/
-scripts/                     profile_data.py, compare_answer_key.py
+scripts/                     profile_data.py (independent fact check), compare_answer_key.py (engine vs §7), set_database_password.py
 ```
 
 ## Commands
@@ -113,5 +113,10 @@ Each row should be a small, tested change. If one isn't, refactor it in Phase 6.
   **not counted as coming** until she types a real date (`late_po_assumed_days = None`), and items only a late PO would
   cover must be called out. BUILD_PROMPT §6.6 / §7 still describe the old "+7 days" rule; this overrides it.
   Harbor costs $30/pallet/month (cases per pallet still unknown).
+- **Late / unknown inventory is its own bucket** (Ishan + Dana, ADR-021): late POs and QA-HOLD are shown, never counted; status
+  uses confirmed supply only; a best-case "if the late PO arrives" run flags items *covered only by a late PO*.
+- **Priorities live in `docs/PRIORITIES.md`.** P0 first. Next after P0: a Harbor storage cost calculator (Dana types cases
+  per pallet; $30/pallet/month; save to a table; CSV export). A chat assistant is P2 (later).
+- **Open orders in the selling rate** (`open_orders_in_selling_rate`, A23): kept True per spec, pending Ishan's decision.
 - **One Vercel project hosts both the website and the API** (Vercel Services), not Render + Vercel (2026-11-25, ADR-002).
   BUILD_PROMPT §8.1/§15 still say Render; this overrides it.

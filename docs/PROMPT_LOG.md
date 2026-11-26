@@ -363,3 +363,48 @@ matched the seeds and the DB (they did).
 - Confirm the Q3 reading.
 - Harbor $ per month needs cases per pallet (or pallets in use) per item. Suggest asking in the planned validation email (§4.5).
 - Phase 3 is waiting for "go".
+
+## #17 | 2026-11-26 05:27 UTC | Late-inventory section, Harbor cost calculator, chatbot later, "why the .ini files / ruff?", start Phase 3
+**Prompt (simplified):** Put late POs in their own section (arriving, but not current inventory), with a section for
+unknown/late inventory. Build a Harbor storage cost calculator (/pallet; Dana types cases per pallet; save rows to a
+table; CSV export) as its own section. A chatbot is for later; priorities first. Why so many .ini files, and what is
+ruff? Begin Phase 3.
+**What changed:**
+- `docs/PRIORITIES.md` (new): P0 #2a late/unknown inventory bucket; P1 #1 Harbor storage cost calculator (absorbs old
+  P1 #5 and part of #1); P2 chat assistant.
+- **Phase 3 engine** in `backend/app/planning/`:
+  - `types`, `seasonality` (monthly category index, in pounds), `demand` (8-week rate → level → daily forecast);
+  - `supply` (on hand; PO arrival dates: Dana > real lead time > BlueTide; late = no date);
+  - `projection` (day-by-day run-out, status, shortage and when stock comes back), `ordering` (order at least, lost-sales floor);
+  - `stuck` (lot tags + Harbor badge + $), `explain` (plain-English steps), `engine` (orchestrates, two scenarios).
+- `services/planning_inputs.py`: maps the clean dataset to engine inputs.
+- Tests: 30 engine tests (traps T15/T22/T23/T26/T30, statuses, flooring, late-PO bucket, handled notes, overrides,
+  stuck precedence, trust strip) + golden G15, G17 and a stuck/trust check → **184 total**.
+- `scripts/compare_answer_key.py`.
+- `business_rules.open_orders_in_selling_rate` switch (default per spec).
+- Docs: ASSUMPTIONS A23–A26; DECISIONS ADR-005/009/016 notes, ADR-021 (late bucket), ADR-022 (floats in engine);
+  DATA_AUDIT Phase 3 status; CLAUDE.md.
+**Impact:** The engine plans all 45 items in about 60 ms. Versus the §7 answer key (current rules):
+- **SHR-2125** Nov 21 (+0d), **LOB-T56** Nov 25 (+0d), **SHR-1620** Dec 10 (−4d), **PAN-0507** Dec 26 (−1d): all too late, same as the key.
+- HAD-FIL, POL-FIL and SAL-SIDE-SK are "this week", 1–2 days earlier than the key.
+- **CRAB-SNW5 and LOB-MEAT flip to "too late"**: their run-outs land 1 day before a new order could arrive (knife-edge).
+  Either way the action is the same: order today and expedite (shortfalls of 13 cs and 2 cs).
+- New in the list: **CAL-RING and PAN-0709**, because their late POs no longer count. Both are flagged "covered only
+  by a late PO", as Dana asked. SAL-CHO6 and SHR-1215 have order-by dates at the this-week boundary.
+- The stuck list and trust strip match the key exactly (SAL-POR6 1,350 cs, 1,050 at Harbor, $81,232; 420/20/78/59;
+  SHR-1620 at Harbor not stuck). Plus 1,500 cs of late POs shown, not counted.
+**Decisions made (and by whom):**
+- Ishan: the late/unknown section, the Harbor calculator as P1 #1, chatbot as P2.
+- Claude, flagged:
+  - seasonality summed in pounds (A26);
+  - the "covered only by a late PO" test uses the best case "arrives today" (A24);
+  - floats in the engine (ADR-022).
+- **Pending Ishan:** `open_orders_in_selling_rate` (A23). The data shows every past order shipped within 3 days,
+  but this week's open orders are holiday pre-bookings, so the spec counts them twice. Kept as spec'd (cautious) for now.
+**AI mistakes caught or corrected:**
+- The first SHR-1620 explanation said the shortage lasted until the new order (Feb 8). In fact the 600 cs PO restocks
+  Jan 25, and "order at least 0" looked like a bug. Added `back_in_stock_date` and an explanation line.
+- Claude's first T22 test assumed an open order didn't affect the rate. It does (spec §6.2), and investigating that led
+  to the A23 finding.
+- The comparison script formatted dates through strftime ("10"); fixed.
+**Follow-ups:** Ishan: decide A23; confirm A24/A26. Phase 4 (API) is waiting for "go".

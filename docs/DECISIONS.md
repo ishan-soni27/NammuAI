@@ -85,7 +85,8 @@ milliseconds for about 30 items × 182 days. At thousands of items, move to a ni
 
 ## ADR-005 Forecast = recent level × category monthly seasonality
 **Decision:** It mirrors Dana's mental model ("October is slow, December won't be"), and it is robust to censored demand and
-one-offs. Limits: one year of data, monthly granularity, no trend detection. _Full write-up to come (§6.7)._
+one-offs. Limits: one year of data, monthly granularity, no trend detection.
+**Implemented 2026-11-26 (Phase 3):** `planning/seasonality.py` + `planning/demand.py`. Shrimp comes out 1.5× in Nov–Dec and Groundfish 1.4× in Feb and 2.0× in Mar (Lent), matching what Dana described. _Full write-up to come (§6.7)._
 
 ## ADR-006 Conservative lead times and ETA re-derivation
 **Decision:** Use the upper end of Dana's ranges. Never trust a BlueTide PO date earlier than the real lead time allows.
@@ -105,7 +106,8 @@ truncated by the loader. The UI shows "BlueTide says / you say", and every chang
 
 ## ADR-009 Statuses and "order at least"
 **Decision:** Order-up-to logic with lost-sales flooring before the new order arrives. Explainable rather than statistically
-optimal. Container and minimum-order rounding is deferred to P1. _Full write-up to come (§6.8, §6.9)._
+optimal. Container and minimum-order rounding is deferred to P1.
+**Implemented 2026-11-26:** the shortage message ends when stock really comes back. That's an earlier PO if one lands first (SHR-1620: Dec 10 → Jan 25, not the new order's Feb 8). When ordering today can't close the gap, the explanation says so instead of showing a confusing "order at least 0". _Full write-up to come (§6.8, §6.9)._
 
 ## ADR-010 Four-layer logging
 **Decision:** (1) JSON app logs plus `request_log`/`event_log`, (2) `load_runs` + `data_issues` + DATA_LOAD_REPORT,
@@ -131,7 +133,8 @@ the postgres role through the session pooler. _Full write-up to come (§8.3)._
 
 ## ADR-016 Category-level seasonality with clamping
 **Decision:** Monthly indices per normalized category from active items only, clamped to [0.4, 2.5]. Single-item
-categories (Squid, Scallops) are noisy; shrinkage toward the overall index is a future step. _Full write-up to come (§6.7)._
+categories (Squid, Scallops) are noisy; shrinkage toward the overall index is a future step.
+**Refined 2026-11-26 (A26):** a category's rate is summed **in pounds** (case items × verified lb per case). Groundfish (pollock blocks in lb, cod in cases) and Salmon (sides in lb, portions in cases) mix units; summing raw rates as §6.7 literally says would let the pound items set the pattern. _Full write-up to come (§6.7)._
 
 ---
 
@@ -225,4 +228,45 @@ One transaction per table: a crash could leave a mix of old and new data.
 - COPY needs the session pooler (5432), which the loader uses.
 
 **Revisit when.** Loads become nightly (prune old raw rows; run the loader near the database, e.g. a Vercel cron).
+
+## ADR-021 Late and unknown inventory get their own bucket; the status counts only confirmed supply
+**Date:** 2026-11-26 · **Decided by:** Dana (email Q3, Q4) and Ishan ("a separate section for POs that are late ... we
+shouldn't count them as part of current inventory"). Implemented by Claude.
+
+**Context.** Dana: late POs are "still coming, but I can't tell you which week ... please don't assume they'll arrive
+within a week. If an item is only covered by a late PO, I want to see that." QA-HOLD stock "sometimes passes and comes
+back" but can't be sold until it does. Ishan wants both visible as their own kind of inventory, never mixed into what's
+on hand.
+
+**Decision.**
+- Supply has three buckets per item:
+  1. **sellable now**;
+  2. **on the way with a date**, counted on its arrival day;
+  3. **late or unknown**: late POs with no date, plus QA-HOLD. Shown with quantities, **not counted**.
+- The order status comes from a **confirmed** projection (buckets 1 and 2).
+- For items with late POs, a second **if the late PO arrives today** projection runs. If it would turn the item fine, the
+  item is flagged **covered only by a late PO**. The explanation also gives the "order at least" for both cases, so Dana
+  doesn't double order.
+- The trust strip shows the late quantity next to on hold / damaged / expired.
+
+**Alternatives.**
+- (a) Assume late POs arrive in 7 days (the email default): rejected by Dana.
+- (b) Drop late POs entirely: hides that they may still come, and Ishan wants them visible.
+
+**Tradeoffs.** Some items look more urgent than BlueTide suggests: calamari and 7-9 oz pangasius are now "order this
+week". That's the point: their coverage depends on a PO nobody can date. The `late_po_assumed_days` knob restores the old
+behaviour in one line.
+
+**Revisit when.** Vendors give real ETAs, or Dana enters dates (each one moves its PO into bucket 2).
+
+## ADR-022 Floats inside the engine, Decimals at the edges
+**Date:** 2026-11-26 · **Decided by:** Claude (announced at the Phase 2 stop; no objection)
+
+**Decision.** The database and loader keep exact `NUMERIC`/`Decimal` quantities and money. The planning engine converts to
+float at its boundary (`services/planning_inputs.py`), because rates, seasonal indices and forecasts are estimates by
+nature. "Order at least" and shortfalls are rounded **up** with a 1e-9 tolerance, so 259.9999999 isn't shown as 260 and
+260.0000001 doesn't become 261. Display rounds to whole cases/pounds.
+
+**Tradeoffs.** No exact-decimal guarantees inside forecasts, which is irrelevant at this precision. Tests compare with
+`pytest.approx`.
 

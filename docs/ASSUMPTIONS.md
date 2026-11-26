@@ -33,6 +33,10 @@ Confirmed by Dana (date) · Decided by Ishan (date) · Assumption (not asked; ou
 | A20 | Vendor missing from vendor_types.csv | Treated as a **stock supplier** (its items still get planned) and flagged | Not asked | `loader/rules.py` `build_vendors` | Assumption (conservative) |
 | A21 | Lot at an unknown location | **Not counted** as sellable, and logged as an error (the lot is left out) until the location is added to `data/reference/locations.csv` | Not asked | `loader/rules.py`, `planning/supply.py` | Assumption (conservative) |
 | A22 | Open PO line received in full | Counts **nothing** as still coming, flagged for Dana | Not asked | `loader/rules.py` `_build_po_line` | Assumption |
+| A23 | Open orders in the selling rate | Open (not yet shipped) orders count toward the recent selling rate **and** are deducted on their ship date (BUILD_PROMPT §6.2, ADR-013). Data check: all 11,881 past orders shipped within 3 days of ordering, but this week's open orders are mostly holiday pre-bookings 1–4+ weeks ahead, so they count twice. Kept as the spec says (the cautious choice) | BUILD_PROMPT §6.2 + data | `open_orders_in_selling_rate` in `business_rules.py` | **Pending Ishan's decision** (see PROMPT_LOG #17 for the numbers) |
+| A24 | "Covered only by a late PO" | Tested against the best case: the late PO arrives today. If that turns an item from red/amber to fine, it's flagged | Dana Q3 + Ishan | `planning/engine.py` | Assumption |
+| A25 | Handled note dated in the past | Counted as arriving today and flagged ("your date has passed"); Dana clears it when it lands | Not asked | `planning/supply.py` | Assumption |
+| A26 | Category seasonality across units | Case items are converted to pounds (verified pack sizes) before a category's months are compared, so pound items don't swamp case items | BUILD_PROMPT §6.7 refinement | `planning/seasonality.py` | Assumption (Claude, flagged to Ishan) |
 
 ## Notes for explaining these in the review
 - **Why conservative?** Every default above leans toward ordering a little early: the upper end of the lead-time range,
