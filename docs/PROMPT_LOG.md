@@ -1115,3 +1115,163 @@ to confirm the Vercel cron.
   or look at Vercel → Project → Settings → Cron Jobs.
 - **Screenshots:** `docs/screenshots/` (all phases) is still uncommitted; only the three README images are in the repo.
 - Then P1 items as Ishan chooses, or the review.
+
+## #34 | 2026-11-26 (claude.ai) | Ishan's scope review: BlueTide stays the record
+**Prompt (simplified):** Ishan reviewed the app in claude.ai after Phase 6, from a zip of the repo, and felt it had
+drifted from what Dana needs and become too complicated.
+**What changed (the conclusions, decided by Ishan):**
+1. **The app had become a second system of record.** POs, receipts, shipments, picks, moves and template imports were
+   recorded in the app and in BlueTide. That needed matching rules R1–R10, 12 extra tables and assumptions A27–A45. It
+   also meant double data entry for Dana's team, which nobody on the kickoff call asked for.
+2. **Fully replacing BlueTide was considered and rejected.** BlueTide also does Marco's order entry, accounting's
+   credits, warehouse receiving, transfers and invoicing. Replacing only part of it leaves the client on two systems,
+   and replacing all of it is an ERP migration.
+3. **Decision: BlueTide stays the system of record, and the app replaces Dana's Monday spreadsheet.** Every Monday she
+   uploads the exports, everything recalculates, and the app stores only what BlueTide doesn't know. Moving off
+   BlueTide becomes a README roadmap item, done one job at a time, with each kind of record owned by exactly one
+   system.
+4. **The "why" text becomes a numbers-only breakdown,** because the sentences read like a memo. They aren't pre-written
+   (see #35).
+**The six boundaries (to go into CLAUDE.md):**
+- BlueTide owns every fact (stock, sales, POs, receipts), from uploaded files only; the app never records a
+  transaction.
+- The app stores only Dana's knowledge and the logs.
+- Each upload refreshes BlueTide's data, and sales lines accumulate.
+- "Today" follows the data: the latest load's snapshot + 1 day, with `AS_OF_DATE` as an override only.
+- The math is deterministic, with no LLM anywhere.
+- No order entry, receiving, shipping, stock moves, or adding customers, items or suppliers in the app.
+**Impact:** a five-step plan (#36): archive and cut; weekly uploads; numbers-only "why"; docs and deploy.
+**Decisions made (and by whom):** Ishan, all of the above.
+**AI mistakes caught or corrected:** The system-of-record expansion doubled the rules and Dana's data entry. Caught by
+Ishan.
+**Follow-ups:** #36.
+
+## #35 | 2026-11-26 (Ishan, terminal) | Are the "why" explanations pre-written?
+**Prompt (simplified):** Ishan worried the item explanations were hard-coded for the demo items, and checked:
+`grep -rn "SHR-2125\|562\|Nov 24" backend/app frontend/src`.
+**What changed:** nothing.
+**Impact:** The only hit was a false positive: "562" inside the colour `#55626c`. `explain.py` is shared templates
+filled from live numbers, so no item's text is pre-written. The sentences are still being replaced with a
+numbers-only breakdown (#36, step 4), because they read like a memo.
+**Decisions made (and by whom):** Ishan: verify, then replace the sentences anyway.
+**AI mistakes caught or corrected:** none (it was a verification).
+**Follow-ups:** #36, step 4.
+
+## #36 | 2026-11-26 20:08 UTC | "Read this whole message ... plan mode": cut to the weekly planning layer
+**Prompt (simplified):** Ishan's plan, in five steps, each ending in a STOP:
+1. Read the code and post a plan.
+2. Archive the current state on `archive/system-of-record`, then cut everything that records transactions (12
+   tables, the matching rules, the PO/shipment/template screens).
+3. Make weekly uploads work: derived "today", handled-note dates, sales that accumulate, import checks, raw-row
+   retention, computed season bands.
+4. Replace the "why" sentences with a numbers-only breakdown and one instruction for late-PO items; add a
+   reconciliation test.
+5. Docs, deploy and log.
+
+He asked two questions in the plan: (a) the instruction's wording; (b) the retention count.
+
+### Step 1: plan (plan mode; approved without changes)
+**What I checked** (read-only; full list in the approved plan):
+- **Live data in the 12 tables:** only test records from "Claude (live click-through)": PO KB-00001 (cancelled),
+  order SH-00001 (cancelled), and 8 stock movements (a receipt, a pick and a Harbor→New Bedford move, each with its
+  undo; they net to zero). App items, suppliers, customers, stock counts and sales are empty.
+- **Ishan's list missed some pieces:**
+  - `app_shipment_prefix`;
+  - the `AppVendor` merge in GET/PATCH `/vendors`;
+  - `AppItem` in `resolve_item_code`;
+  - app POs in the handled hint;
+  - `POLineInput.source/flags`;
+  - the import's R4/R7 conflict checks;
+  - `PORow`, three status chips, the item page's move and stock-changes parts, and "Add a supplier".
+- **The handled-note date bug is real** (`build_context` dates notes with `rules.as_of_date` when it reads them).
+- **A load must use the new files' snapshot + 1 day as "today",** because the loader uses AS_OF for expiry, stale PO
+  dates and dormant items.
+- **Raw rows don't record which load first brought them in.** Step 3 adds `origin_load_run_id`.
+- **Storage:** 47 MB of raw rows for 5 loads (about 9.4 MB per load).
+- **The sales merge key works:** order_no + line_no is unique across 15,750 rows, and the history is about 12.5 months.
+- **A chart bug:** the item chart plots the plain balance, so after a stockout it shows SHR-1620 at about 218 cases
+  instead of about 590 when the Jan 25 PO lands. It's fixed in step 4, and the reconciliation test includes lost
+  sales.
+- **Vercel:** Ishan should check that `AS_OF_DATE` isn't set there, because it would pin "today".
+**Decisions made (and by whom):**
+- Ishan approved the plan as written:
+  - (a) the default instruction wording, with variants for "order at least 0" and several late POs;
+  - (b) keep 8 loads of raw rows, and clear older uploads' file bytes;
+  - deploy at the end of each step, in an order that never breaks live.
+
+### Step 2: archive, then cut (approved plan; STOP after)
+**What changed:**
+- **Archive:** tag `archive/system-of-record` on 0796817, pushed before anything was deleted.
+- **Backend, removed:**
+  - `planning/records.py`, `services/records_service.py`, `shipments_service.py` and `template_import.py`;
+  - `api/v1/shipments.py`;
+  - the PO write routes, the stock-movement undo, `/locations`;
+  - `/item-details`, `POST /items`, `PATCH /items/{code}/details`, `POST /vendors`, `/import-templates`;
+  - `app_po_prefix` and `app_shipment_prefix`;
+  - `POLineInput.source/flags`;
+  - the import's checks against Dana's own records.
+- **Backend, changed:**
+  - `GET /purchase-orders` = BlueTide's open lines as the plan counts them (`planning_service.on_the_way`), searchable;
+  - the PO-date PATCH looks the line up in the clean layer: 404 if missing, 409 if fully received or cancelled, 422
+    for a past date, audited as before;
+  - `build_context` = the cached clean layer + vendor/item settings, PO dates and handled notes;
+  - item-page lots come from BlueTide's rows;
+  - `IncomingLine` carries `po_no` and `line_no` (no more parsing "PO-x line n");
+  - the PO export = open BlueTide lines with our date, BlueTide's date and the late flag; the shipments export is
+    gone;
+  - the import check warns about open handled notes on items the new files drop.
+- **Models and migration:**
+  - 12 models removed; `APP_LAYER` = vendor_settings, item_settings, po_eta_overrides, handled_flags,
+    harbor_storage_rows, uploads, upload_files;
+  - `uploads.kind` = 'bluetide' only;
+  - **migration 0006** drops the 12 tables. Its downgrade re-creates them empty from 0002/0003 and 0004's
+    definitions (both directions rendered offline before running).
+- **Website:**
+  - removed: NewPOPage, NewShipmentPage, ShipmentsPage, ItemsPage, MoveStockDialog, ShipmentRow, PORow, three
+    chips, "Create a PO", "Move to New Bedford", the item page's moves and stock changes, the template import, and
+    "Add a supplier";
+  - **On the way** (`/on-the-way`; `/purchase-orders` redirects): late lines first, our date vs BlueTide's, Set real
+    date / Change date, Download for Excel;
+  - nav: Monday · On the way · Suppliers · Harbor · Data · Activity;
+  - Activity keeps the labels of removed actions so the old audit rows still read.
+- **Tests:**
+  - deleted `test_records.py` and `test_shipments.py`;
+  - `test_purchase_orders.py` is now 4 read-only tests: the open list matches the clean layer, search, a real date
+    moves a late line into the counted ones, the cut routes are gone;
+  - the import tests check that Dana's date, note and pallet number survive a reload;
+  - the export tests cover the new PO file;
+  - `test_invariants` follows dropped tables and guards against their return.
+**Impact:**
+- **Checks:** 226 backend tests pass (was 293; 67 went with the cut features). The 20 golden tests (G01–G17) pass.
+  Ruff, build, lint and format are clean, and the raw-file checksums match.
+- **Regression, local and live:**
+  - Monday **3 / 6 / 5 / 16**, 0 handled, **3 late POs, 1,500 cases**;
+  - SHR-1620 **480 can sell, 201 promised, runs out Dec 14**;
+  - 14 open lines on the way, 3 of them late.
+- **Order on live:**
+  - pushed and waited for version eb7f15a;
+  - rechecked the 12 tables (unchanged: only the test records);
+  - ran **0006 on Supabase**, then `alembic check`: no drift, and none of the 12 tables is left.
+- **Live smoke test:**
+  - 10 pages (8 screens plus 2 old links that redirect) with no errors and no sideways scrolling at 1280 or 375 px;
+  - mark handled and clear it; set a PO date from Monday and clear it; set and clear a date on On the way;
+  - data notes with file and line;
+  - Activity rows.
+- Screenshots: `tmp/shots/live-cut/` (not committed).
+**Decisions made (and by whom):**
+- Ishan: the cut list and the plan.
+- Claude:
+  - On the way lives at `/on-the-way`, and old links redirect;
+  - the PO-date 409 says "fully received" or "cancelled";
+  - Activity keeps the old action labels;
+  - the import check keeps one useful warning (notes on dropped items).
+**AI mistakes caught or corrected:**
+- **The router registry still imported the deleted `shipments` module.** The first `import app.main` failed on it,
+  and it was fixed before any test ran.
+- **The Harbor page still told Dana to "add pounds per case on the Items page",** a page that no longer exists.
+  Caught by a grep for removed features; it now says the pounds per case comes from BlueTide's item file.
+- **My pre-drop check counted every line row as "not by the test user".** The line tables have no author column.
+  They were the line rows of the test PO and order, as the plan check had shown, so nothing new was there.
+- Two lines over the length limit after edits (fixed); the type checker then listed the screens still using cut
+  hooks, and each was fixed.
+**Follow-ups:** step 3 (weekly uploads) when Ishan says go. **Ishan:** check that `AS_OF_DATE` isn't set on Vercel.
