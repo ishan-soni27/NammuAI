@@ -17,8 +17,10 @@ export interface HealthResponse {
   status: "ok" | "degraded";
   db: "ok" | "down" | "not_configured";
   schema_ready: boolean;
-  /** Business "today". Always use this, never the browser clock. */
+  /** Business "today": the day after BlueTide's latest stock count. Never the browser clock. */
   as_of: string;
+  /** The date of BlueTide's stock count in the latest load (null before the first load). */
+  snapshot_date?: string | null;
   last_load_at: string | null;
   version: string;
 }
@@ -414,6 +416,16 @@ export interface ImportReport {
   changes?: { what: string; now?: number; after?: number; count?: number }[];
   snapshot_date?: string;
   current_snapshot_date?: string | null;
+  /** "Today" for these files: the day after their stock count. */
+  today?: string;
+  /** How this week's sales file merged with the stored history (sales accumulate). */
+  sales?: {
+    new: number;
+    updated: number;
+    unchanged: number;
+    kept: number;
+    months_of_history: number;
+  };
   notes?: { total: number; by_problem: { trap_id: string; title: string; count: number }[] };
   loaded?: Record<string, unknown>;
 }

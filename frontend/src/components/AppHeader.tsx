@@ -7,7 +7,7 @@
  */
 import { NavLink, Link } from "react-router";
 import { useHealth } from "../api/health";
-import { formatLongDate } from "../lib/dates";
+import { formatLongDate, formatShortDate } from "../lib/dates";
 
 const LINKS = [
   { to: "/", label: "Monday" },
@@ -32,7 +32,15 @@ export function AppHeader({ actor, onChangeActor }: AppHeaderProps) {
         <Link to="/" className="text-lg font-bold text-ink">
           Kestrel Bay ordering
         </Link>
-        <p className="text-fog">{data ? formatLongDate(data.as_of) : " "}</p>
+        <p className="text-fog">
+          {data ? formatLongDate(data.as_of) : " "}
+          {data?.snapshot_date && (
+            <span className="text-sm">
+              {" "}
+              · BlueTide stock count of {formatShortDate(data.snapshot_date)}
+            </span>
+          )}
+        </p>
       </div>
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 pb-2 pt-2 sm:px-6">
         <nav aria-label="Pages" className="-mx-2 flex flex-wrap">

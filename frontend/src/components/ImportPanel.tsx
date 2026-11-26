@@ -7,7 +7,10 @@
 import { useState } from "react";
 import { useCheckImport, useDiscardImport, useLoadImport, usePutImportFile } from "../api/queries";
 import type { Import, ImportReport } from "../api/types";
+import { formatShortDate } from "../lib/dates";
 import { primaryButton, quietButton, secondaryButton } from "../lib/ui";
+
+const n = (value: number) => value.toLocaleString("en-US");
 
 function Report({ report }: { report: ImportReport }) {
   return (
@@ -61,9 +64,18 @@ function Report({ report }: { report: ImportReport }) {
       )}
       {report.snapshot_date && (
         <p className="text-sm text-fog">
-          Stock count in these files: {report.snapshot_date}
-          {report.current_snapshot_date && ` (the one loaded now: ${report.current_snapshot_date})`}
-          .
+          Stock count in these files: {formatShortDate(report.snapshot_date)}
+          {report.current_snapshot_date &&
+            ` (the one loaded now: ${formatShortDate(report.current_snapshot_date)})`}
+          .{report.today && ` Loading them makes today ${formatShortDate(report.today)}.`}
+        </p>
+      )}
+      {report.sales && (
+        <p className="text-sm text-fog">
+          Sales lines: {n(report.sales.new)} new, {n(report.sales.updated)} changed (for example
+          open to invoiced), {n(report.sales.unchanged)} the same, and {n(report.sales.kept)} older
+          ones kept from earlier uploads. {report.sales.months_of_history} months of sales history
+          in all.
         </p>
       )}
       {report.notes && (
