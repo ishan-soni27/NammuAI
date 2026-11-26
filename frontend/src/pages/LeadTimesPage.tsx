@@ -1,16 +1,17 @@
 /**
- * Lead times (BUILD_PROMPT §9.4): per supplier, how long an order takes to arrive and how much cushion
- * to keep. Dana edits in weeks; the API stores days (1 to 365, checked by the API). Each row saves on
+ * Suppliers (was "Lead times", BUILD_PROMPT §9.4): per supplier, how long an order takes to arrive and
+ * how much cushion to keep, plus "Add a supplier" for ones BlueTide doesn't have (Phase 6). Dana edits in weeks; the API stores days (1 to 365, checked by the API). Each row saves on
  * its own, says so in a toast, and lands in the Activity log with her name.
- * Fed by: GET /vendors; PATCH /vendors/{code}.
+ * Fed by: GET /vendors; PATCH /vendors/{code}; POST /vendors.
  */
 import { useState, type FormEvent } from "react";
-import { useUpdateVendor, useVendors } from "../api/queries";
+import { useCreateVendor, useUpdateVendor, useVendors } from "../api/queries";
 import type { Vendor } from "../api/types";
 import { QueryState } from "../components/QueryState";
 import { Term } from "../components/Term";
 import { formatTimestamp } from "../lib/dates";
 import { weeks } from "../lib/format";
+import { input, label, primaryButton, quietButton, secondaryButton } from "../lib/ui";
 
 const toWeeks = (days: number) => String(Math.round((days / 7) * 10) / 10);
 const toDays = (weeksText: string) => Math.round(Number(weeksText) * 7);
@@ -124,18 +125,114 @@ function VendorRow({ vendor }: { vendor: Vendor }) {
   );
 }
 
+function AddSupplier({ onDone }: { onDone: () => void }) {
+  const create = useCreateVendor();
+  const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+  const [country, setCountry] = useState("");
+  const [lead, setLead] = useState("");
+  const [cushion, setCushion] = useState("1");
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    create.mutate(
+      {
+        name: name.trim(),
+        vendor_code: code.trim() || null,
+        country: country.trim() || null,
+        lead_time_days: toDays(lead),
+        cushion_days: toDays(cushion),
+        note: null,
+      },
+      { onSuccess: onDone },
+    );
+  };
+  return (
+    <form onSubmit={submit} className="space-y-3 rounded-lg border border-rope bg-hull px-5 py-4">
+      <h2 className="text-lg font-bold">Add a supplier</h2>
+      <div className="grid gap-3 sm:grid-cols-5">
+        <label className={`${label} sm:col-span-2`}>
+          Name
+          <input
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className={input}
+          />
+        </label>
+        <label className={label}>
+          Short code (optional)
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="From the name"
+            className={input}
+          />
+        </label>
+        <label className={label}>
+          Country
+          <input value={country} onChange={(e) => setCountry(e.target.value)} className={input} />
+        </label>
+        <div />
+        <label className={label}>
+          Weeks <Term explain="arrive">to arrive</Term>
+          <input
+            type="number"
+            min={1 / 7}
+            max={365 / 7}
+            step="any"
+            required
+            value={lead}
+            onChange={(e) => setLead(e.target.value)}
+            className={input}
+          />
+        </label>
+        <label className={label}>
+          <Term explain="cushion">Cushion</Term>, weeks
+          <input
+            type="number"
+            min={1 / 7}
+            max={365 / 7}
+            step="any"
+            required
+            value={cushion}
+            onChange={(e) => setCushion(e.target.value)}
+            className={input}
+          />
+        </label>
+      </div>
+      <div className="flex gap-2">
+        <button type="submit" disabled={create.isPending} className={primaryButton}>
+          {create.isPending ? "Saving…" : "Add supplier"}
+        </button>
+        <button type="button" onClick={onDone} className={quietButton}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function LeadTimesPage() {
   const vendors = useVendors();
+  const [adding, setAdding] = useState(false);
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">Lead times</h1>
-        <p className="mt-1 text-fog">
-          How long each supplier takes from placing the order to having it in our building, and how
-          much extra stock to keep for when ships slip. When BlueTide is wrong or blank, what you
-          say here is what the plan uses.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Suppliers</h1>
+          <p className="mt-1 text-fog">
+            How long each supplier takes from placing the order to having it in our building, and
+            how much extra stock to keep for when ships slip. When BlueTide is wrong or blank, what
+            you say here is what the plan uses.
+          </p>
+        </div>
+        {!adding && (
+          <button type="button" onClick={() => setAdding(true)} className={secondaryButton}>
+            Add a supplier
+          </button>
+        )}
       </div>
+      {adding && <AddSupplier onDone={() => setAdding(false)} />}
       <QueryState query={vendors} label="Loading suppliers">
         {(list) => (
           <div className="space-y-3">

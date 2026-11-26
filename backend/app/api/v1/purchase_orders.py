@@ -8,6 +8,7 @@ POST   /purchase-orders/{po_no}/lines/{line_no}/cancel     cancel a line
 DELETE /purchase-orders/{po_no}/lines/{line_no}/status     undo "shipped" or "cancelled"
 POST   /purchase-orders/{po_no}/lines/{line_no}/receive    receive stock: qty, building, lot, expiry
 POST   /stock-movements/{movement_id}/undo                 reverse a receipt (the history stays)
+GET    /locations                                          the buildings (for the receive form)
 
 The expected date of a line is set with the existing PATCH /purchase-orders/{po_no}/lines/{line_no}
 (suppliers.py), for BlueTide's lines and Dana's alike. Every write is audited (services/audit.py).
@@ -18,10 +19,12 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.v1 import schemas as s
 from app.config.business_rules import BusinessRules, get_business_rules
+from app.db import models as m
 from app.db.session import get_db
 from app.services import records_service as svc
 
@@ -100,3 +103,18 @@ def receive_line(
 @router.post("/stock-movements/{movement_id}/undo", response_model=s.MovementOut, status_code=201)
 def undo_movement(movement_id: int, body: s.UndoIn, db: Session = Depends(get_db)) -> s.MovementOut:
     return svc.undo_movement(db, movement_id, body)
+
+
+@router.get("/locations", response_model=list[s.LocationOut])
+def list_locations(db: Session = Depends(get_db)) -> list[s.LocationOut]:
+    return [
+        s.LocationOut(
+            code=x.code,
+            name=x.name,
+            is_sellable=x.is_sellable,
+            may_return_to_stock=x.may_return_to_stock,
+            is_third_party_storage=x.is_third_party_storage,
+            can_receive=x.is_sellable or x.may_return_to_stock,
+        )
+        for x in db.scalars(select(m.Location).order_by(m.Location.code)).all()
+    ]

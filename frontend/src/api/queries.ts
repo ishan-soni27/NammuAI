@@ -21,7 +21,11 @@ import type {
   ItemCard,
   ItemDetail,
   ItemSettings,
+  ItemDetails,
   LoadRun,
+  Location,
+  Movement,
+  PurchaseOrder,
   Rule,
   Vendor,
 } from "./types";
@@ -39,6 +43,9 @@ export const keys = {
   events: ["events"] as const,
   loadRuns: ["load-runs"] as const,
   settings: ["settings"] as const,
+  purchaseOrders: (status: string, q: string) => ["purchase-orders", status, q] as const,
+  itemDetails: ["item-details"] as const,
+  locations: ["locations"] as const,
 };
 
 // ---- Reads ---------------------------------------------------------------------------------
@@ -106,10 +113,40 @@ export const useRules = () =>
     queryFn: ({ signal }) => apiGet<Rule[]>("/settings", signal),
   });
 
+export const usePurchaseOrders = (status: string, q: string) =>
+  useQuery({
+    queryKey: keys.purchaseOrders(status, q),
+    queryFn: ({ signal }) =>
+      apiGet<PurchaseOrder[]>(`/purchase-orders?status=${enc(status)}&q=${enc(q)}`, signal),
+    placeholderData: (previous) => previous, // keep the list on screen while a filter reloads
+  });
+
+export const useItemDetails = () =>
+  useQuery({
+    queryKey: keys.itemDetails,
+    queryFn: ({ signal }) => apiGet<ItemDetails[]>("/item-details", signal),
+  });
+
+export const useLocations = () =>
+  useQuery({
+    queryKey: keys.locations,
+    queryFn: ({ signal }) => apiGet<Location[]>("/locations", signal),
+    staleTime: Infinity,
+  });
+
 // ---- Edits ---------------------------------------------------------------------------------
 
 function refreshAfterEdit(client: QueryClient) {
-  for (const key of [keys.dashboard, keys.items, keys.audit, ["item"]]) {
+  const all = [
+    keys.dashboard,
+    keys.items,
+    keys.audit,
+    ["item"],
+    ["purchase-orders"],
+    keys.itemDetails,
+    keys.vendors,
+  ];
+  for (const key of all) {
     void client.invalidateQueries({ queryKey: key });
   }
 }
@@ -195,4 +232,112 @@ export const useUpdateItemSettings = () =>
       return apiSend<ItemSettings>("PATCH", `/items/${enc(code)}/settings`, body);
     },
     () => "Item settings saved",
+  );
+
+// ---- Dana's own records (Phase 6) ----------------------------------------------------------
+
+export interface POCreateInput {
+  vendor_code: string;
+  po_no: string | null;
+  order_date: string | null;
+  expected_date: string | null;
+  note: string | null;
+  lines: { item_code: string; qty: number; unit_cost: number | null }[];
+  clear_handled_notes: boolean;
+}
+
+export const useCreatePO = () =>
+  useEdit(
+    (v: POCreateInput) => apiSend<PurchaseOrder>("POST", "/purchase-orders", v),
+    (_v, po) => `Saved ${po.po_no}`,
+  );
+
+const line = (po: string, n: number) => `/purchase-orders/${enc(po)}/lines/${n}`;
+
+export const useShipLine = () =>
+  useEdit(
+    (v: { po: string; line: number; container_no: string | null; eta: string | null }) =>
+      apiSend<PurchaseOrder>("POST", `${line(v.po, v.line)}/ship`, {
+        container_no: v.container_no,
+        eta: v.eta,
+      }),
+    (v) => `${v.po} line ${v.line} marked shipped`,
+  );
+
+export const useCancelLine = () =>
+  useEdit(
+    (v: { po: string; line: number; reason: string | null }) =>
+      apiSend<PurchaseOrder>("POST", `${line(v.po, v.line)}/cancel`, { reason: v.reason }),
+    (v) => `${v.po} line ${v.line} cancelled`,
+  );
+
+export const useReopenLine = () =>
+  useEdit(
+    (v: { po: string; line: number }) =>
+      apiSend<PurchaseOrder>("DELETE", `${line(v.po, v.line)}/status`),
+    (v) => `${v.po} line ${v.line} reopened`,
+  );
+
+export interface ReceiveInput {
+  po: string;
+  line: number;
+  qty: number;
+  location_code: string;
+  lot_no: string;
+  expiry_date: string;
+  unit_cost: number | null;
+  allow_over_receipt: boolean;
+}
+
+export const useReceiveLine = () =>
+  useEdit(
+    ({ po, line: n, ...body }: ReceiveInput) =>
+      apiSend<PurchaseOrder>("POST", `${line(po, n)}/receive`, body),
+    (v) => `Received ${v.qty.toLocaleString("en-US")} on ${v.po} line ${v.line}`,
+  );
+
+export const useUndoMovement = () =>
+  useEdit(
+    (v: { id: number; reason: string | null }) =>
+      apiSend<Movement>("POST", `/stock-movements/${v.id}/undo`, { reason: v.reason }),
+    () => "Receipt undone",
+  );
+
+export interface VendorCreateInput {
+  vendor_code: string | null;
+  name: string;
+  country: string | null;
+  lead_time_days: number;
+  cushion_days: number;
+  note: string | null;
+}
+
+export const useCreateVendor = () =>
+  useEdit(
+    (v: VendorCreateInput) => apiSend<Vendor>("POST", "/vendors", v),
+    (_v, vendor) => `Added ${vendor.name}`,
+  );
+
+export interface ItemInputBody {
+  item_code: string;
+  description: string;
+  category: string;
+  sell_uom: "CS" | "LB";
+  lb_per_case: number | null;
+  vendor_code: string;
+  status: "active" | "discontinued";
+  note: string | null;
+}
+
+export const useCreateItem = () =>
+  useEdit(
+    (v: ItemInputBody) => apiSend<ItemDetails>("POST", "/items", v),
+    (_v, item) => `Added ${item.item_code}`,
+  );
+
+export const useUpdateItemDetails = () =>
+  useEdit(
+    ({ item_code, ...body }: Partial<ItemInputBody> & { item_code: string }) =>
+      apiSend<ItemDetails>("PATCH", `/items/${enc(item_code)}/details`, body),
+    (v) => `Saved ${v.item_code}`,
   );

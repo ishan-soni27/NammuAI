@@ -361,3 +361,99 @@ export interface ApiErrorBody {
     details?: { field: string; problem: string }[];
   };
 }
+
+// ---- Dana's own records (Phase 6, ADR-026/027) ---------------------------------------------
+
+export type RecordSource = "app" | "bluetide" | "both";
+
+/** GET /item-details */
+export interface ItemDetails {
+  item_code: string;
+  description: string;
+  category: string;
+  sell_uom: "CS" | "LB";
+  lb_per_case: number | null;
+  vendor_code: string;
+  status: "active" | "discontinued";
+  source: RecordSource;
+  note: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
+export interface Receipt {
+  movement_id: number;
+  received_on: string;
+  qty: number;
+  location_code: string;
+  location_name: string;
+  lot_no: string;
+  expiry_date: string | null;
+  unit_cost: number | null;
+  created_by: string;
+  added_to_stock: boolean;
+  why_not: string | null;
+}
+
+export type POLineStatus = "open" | "shipped" | "received" | "cancelled" | "late";
+
+export interface POLine {
+  po_no: string;
+  line_no: number;
+  item_code: string;
+  description: string;
+  sell_uom: string;
+  source: RecordSource;
+  ordered: number;
+  received: number;
+  remaining: number;
+  status: POLineStatus;
+  counted: boolean;
+  eta: string | null;
+  eta_source: string | null;
+  bluetide_date: string | null;
+  shipped_on: string | null;
+  container_no: string | null;
+  cancel_reason: string | null;
+  unit_cost: number | null;
+  flags: string[];
+  receipts: Receipt[];
+}
+
+export type POStatus = "open" | "shipped" | "late" | "partly_received" | "received" | "cancelled";
+
+/** GET /purchase-orders */
+export interface PurchaseOrder {
+  po_no: string;
+  vendor_code: string;
+  vendor_name: string;
+  order_date: string;
+  source: RecordSource;
+  status: POStatus;
+  expected_date: string | null;
+  note: string | null;
+  created_by: string | null;
+  lines: POLine[];
+}
+
+export interface Movement {
+  id: number;
+  movement_date: string;
+  kind: string;
+  item_code: string;
+  location_code: string;
+  lot_no: string;
+  qty: number;
+  reverses_id: number | null;
+  created_by: string;
+}
+
+/** GET /locations */
+export interface Location {
+  code: string;
+  name: string;
+  is_sellable: boolean;
+  may_return_to_stock: boolean;
+  is_third_party_storage: boolean;
+  can_receive: boolean;
+}

@@ -188,6 +188,12 @@ function Item({ detail }: { detail: ItemDetail }) {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <StatusChip status={card.handled_note ? "HANDLED" : card.status} />
+          <Link
+            to={`/purchase-orders/new?item=${encodeURIComponent(card.item_code)}&qty=${Math.ceil(card.order_at_least) || ""}`}
+            className="rounded-md bg-ink px-3 py-1.5 font-semibold text-hull"
+          >
+            Create a PO
+          </Link>
           <button
             type="button"
             onClick={() => setHandling(true)}

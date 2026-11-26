@@ -69,3 +69,39 @@ export function HarborBadge() {
     </span>
   );
 }
+
+const PO_STATUS: Record<string, { label: string; icon: string; className: string }> = {
+  late: { label: "Late", icon: "⚠", className: "bg-red text-hull" },
+  open: { label: "Ordered", icon: "○", className: "bg-grey-tint text-grey" },
+  shipped: { label: "Shipped", icon: "➜", className: "bg-grey-tint text-ink" },
+  partly_received: {
+    label: "Partly received",
+    icon: "◐",
+    className: "bg-yellow-tint text-ink ring-1 ring-inset ring-yellow",
+  },
+  received: { label: "Received", icon: "✓", className: "bg-green text-hull" },
+  cancelled: { label: "Cancelled", icon: "✕", className: "bg-grey-tint text-grey" },
+};
+
+/** A PO's (or a PO line's) status: late is red, received is green, everything else grey. */
+export function POStatusChip({ status }: { status: string }) {
+  const s = PO_STATUS[status] ?? PO_STATUS.open!;
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-sm font-semibold ${s.className}`}
+    >
+      <span aria-hidden="true">{s.icon}</span>
+      {s.label}
+    </span>
+  );
+}
+
+/** "Yours" (made in the app) or "Yours + BlueTide" next to a record. Nothing for BlueTide-only. */
+export function SourceBadge({ source }: { source: "app" | "bluetide" | "both" }) {
+  if (source === "bluetide") return null;
+  return (
+    <span className="inline-block whitespace-nowrap rounded border border-rope px-1.5 py-0.5 text-xs font-semibold text-fog">
+      {source === "app" ? "Yours" : "Yours + BlueTide"}
+    </span>
+  );
+}

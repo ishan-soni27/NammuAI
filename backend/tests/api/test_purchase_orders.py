@@ -271,3 +271,9 @@ def test_dana_records_survive_and_the_plan_is_unchanged_without_them(api: TestCl
     d = api.get(f"{V}/dashboard").json()
     assert d["summary"]["too_late"] == 3 and d["summary"]["order_this_week"] == 6
     assert d["summary"]["order_soon"] == 5 and d["summary"]["fine"] == 16
+
+
+def test_locations_say_which_buildings_can_receive(api: TestClient) -> None:
+    locs = {x["code"]: x for x in api.get(f"{V}/locations").json()}
+    assert locs["NB"]["can_receive"] and locs["QA-HOLD"]["can_receive"] and not locs["DAMAGED"]["can_receive"]
+    assert locs["HCS"]["is_third_party_storage"]

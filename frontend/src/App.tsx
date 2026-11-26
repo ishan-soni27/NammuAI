@@ -5,16 +5,19 @@
  * screen stays small and fast.
  */
 import { lazy, Suspense, useState } from "react";
-import { Route, Routes } from "react-router";
+import { Navigate, Route, Routes } from "react-router";
 import { ActorPrompt } from "./components/ActorPrompt";
 import { AppHeader } from "./components/AppHeader";
 import { LoadingState } from "./components/LoadingState";
 import { getActor, hasChosenActor } from "./lib/actor";
 import { ActivityPage } from "./pages/ActivityPage";
 import { DataNotesPage } from "./pages/DataNotesPage";
+import { ItemsPage } from "./pages/ItemsPage";
 import { LeadTimesPage } from "./pages/LeadTimesPage";
 import { MondayPage } from "./pages/MondayPage";
+import { NewPOPage } from "./pages/NewPOPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage";
 
 const ItemPage = lazy(() => import("./pages/ItemPage").then((m) => ({ default: m.ItemPage })));
 
@@ -35,8 +38,12 @@ export function App() {
         <Suspense fallback={<LoadingState label="Loading this page" />}>
           <Routes>
             <Route path="/" element={<MondayPage />} />
+            <Route path="/items" element={<ItemsPage />} />
             <Route path="/items/:code" element={<ItemPage />} />
-            <Route path="/lead-times" element={<LeadTimesPage />} />
+            <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
+            <Route path="/purchase-orders/new" element={<NewPOPage />} />
+            <Route path="/suppliers" element={<LeadTimesPage />} />
+            <Route path="/lead-times" element={<Navigate to="/suppliers" replace />} />
             <Route path="/data-notes" element={<DataNotesPage />} />
             <Route path="/activity" element={<ActivityPage />} />
             <Route path="*" element={<NotFoundPage />} />

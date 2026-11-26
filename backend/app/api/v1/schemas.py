@@ -615,3 +615,12 @@ class MovementOut(BaseModel):
     qty: float
     reverses_id: int | None
     created_by: str
+
+
+class LocationOut(BaseModel):
+    code: str
+    name: str
+    is_sellable: bool
+    may_return_to_stock: bool
+    is_third_party_storage: bool
+    can_receive: bool  # sellable, or a hold that may come back (never Damaged)
