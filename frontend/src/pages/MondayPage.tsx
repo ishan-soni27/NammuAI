@@ -13,6 +13,7 @@ import { Link } from "react-router";
 import { useDashboard } from "../api/queries";
 import type { Dashboard, Status } from "../api/types";
 import { Disclosure } from "../components/Disclosure";
+import { DownloadLink } from "../components/DownloadLink";
 import { OrderRow } from "../components/OrderRow";
 import { QueryState } from "../components/QueryState";
 import { RunwayLegend } from "../components/RunwayBar";
@@ -173,7 +174,10 @@ function Monday({ data }: { data: Dashboard }) {
             <h2 id="order-heading" className="text-xl font-bold">
               What to order
             </h2>
-            <RunwayLegend />
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <RunwayLegend />
+              <DownloadLink list="order-list" what="Every item, its status and how much to order" />
+            </div>
           </div>
           {data.order_items.length === 0 ? (
             <p className="rounded-lg border border-rope bg-hull px-4 py-3">
@@ -235,7 +239,10 @@ function Monday({ data }: { data: Dashboard }) {
             <h2 id="stuck-heading" className="text-xl font-bold">
               What you're stuck with
             </h2>
-            <span className="text-sm text-fog">{money(s.stuck_value)} at cost</span>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span className="text-sm text-fog">{money(s.stuck_value)} at cost</span>
+              <DownloadLink list="stuck-list" what="Every stuck lot, its building and value" />
+            </div>
           </div>
           <div className="overflow-hidden rounded-lg border border-rope bg-hull">
             <StuckList items={data.stuck_items} />

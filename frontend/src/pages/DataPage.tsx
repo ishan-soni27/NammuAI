@@ -15,6 +15,7 @@ import { QueryState } from "../components/QueryState";
 import { formatTimestamp } from "../lib/dates";
 import { secondaryButton } from "../lib/ui";
 import { DataNotesPage } from "./DataNotesPage";
+import { DownloadLink } from "../components/DownloadLink";
 
 const STATUS: Record<Import["status"], string> = {
   open: "Not checked yet",
@@ -31,12 +32,19 @@ export function DataPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Data</h1>
-        <p className="mt-1 text-fog">
-          Bring in this week's BlueTide files, or your own spreadsheets. Nothing changes until
-          you've seen the check and pressed Load.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Data</h1>
+          <p className="mt-1 text-fog">
+            Bring in this week's BlueTide files, or your own spreadsheets. Nothing changes until
+            you've seen the check and pressed Load.
+          </p>
+        </div>
+        <DownloadLink
+          list="data-notes"
+          label="Download data notes for Excel"
+          what="Every change the loader made to BlueTide's files, with file and line"
+        />
       </div>
 
       <section

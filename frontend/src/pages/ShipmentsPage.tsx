@@ -11,6 +11,7 @@ import { useShipments } from "../api/queries";
 import { QueryState } from "../components/QueryState";
 import { ShipmentRow } from "../components/ShipmentRow";
 import { input, primaryButton } from "../lib/ui";
+import { DownloadLink } from "../components/DownloadLink";
 
 const FILTERS = [
   ["open", "Open"],
@@ -38,9 +39,12 @@ export function ShipmentsPage() {
             stock.
           </p>
         </div>
-        <Link to="/shipments/new" className={primaryButton}>
-          New order
-        </Link>
+        <div className="flex flex-wrap items-center gap-4">
+          <DownloadLink list="shipments" what="Every order line, with the lots taken" />
+          <Link to="/shipments/new" className={primaryButton}>
+            New order
+          </Link>
+        </div>
       </div>
       <div className="flex flex-wrap items-end gap-3">
         <div role="group" aria-label="Show" className="flex flex-wrap gap-1">

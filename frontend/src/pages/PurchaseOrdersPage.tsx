@@ -11,6 +11,7 @@ import { usePurchaseOrders } from "../api/queries";
 import { PORow } from "../components/PORow";
 import { QueryState } from "../components/QueryState";
 import { input, primaryButton } from "../lib/ui";
+import { DownloadLink } from "../components/DownloadLink";
 
 const FILTERS = [
   ["open", "Open"],
@@ -38,9 +39,12 @@ export function PurchaseOrdersPage() {
             Yours and BlueTide's in one list. What's still to come counts as on the way on Monday.
           </p>
         </div>
-        <Link to="/purchase-orders/new" className={primaryButton}>
-          New PO
-        </Link>
+        <div className="flex flex-wrap items-center gap-4">
+          <DownloadLink list="purchase-orders" what="Every PO line, yours and BlueTide's" />
+          <Link to="/purchase-orders/new" className={primaryButton}>
+            New PO
+          </Link>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
