@@ -365,6 +365,13 @@ on phones, two from 640 px), not a list: status, code, name, key date, the runwa
 clicked card opens across the full row (`open:col-span-full`) and the cards after it fill in (`grid-flow-dense`).
 The stuck list stays a list (it is grouped by problem with money on each row).
 
+**Update (Ishan, 2026-11-26, prompt #29).** What to order is split into one dropdown per status, most urgent
+first: **Too late** and **Order this week** start open, **Order soon** starts closed. Each header shows the status
+chip, how many items, and one line on what it means; inside is the grid of cards, which no longer repeat the chip
+(the coloured edge stays). Every dropdown has its own *named* Tailwind group (`group/card`, `group/section`,
+`group/disclosure`, ...). A shared `group` makes a parent's open or hover state leak into everything inside it (the
+bubble bug, #28, and closed cards showing "Close", #29).
+
 ## ADR-026 Direction: the app becomes the main record for POs and shipments
 **Date:** 2026-11-26 · **Decided by:** Ishan · **Status:** direction decided; the design (Phase 6) is waiting for "go"
 

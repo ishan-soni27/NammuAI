@@ -841,3 +841,37 @@ not a list, so it looks better.
 - The PO click-through stopped on re-run because its test item already existed in the preview database (test data,
   not an app bug). It also showed duplicate supplier names were allowed; fixed.
 **Follow-ups:** Step 6.3 (Import) waits until Ishan says go.
+
+## #29 | 2026-11-26 15:55 UTC | "categorize Too Late, Order This Week and Order Soon into their own dropdowns"
+**Prompt (simplified):** Before step 3, put Too late, Order this week and Order soon into their own dropdowns, each
+holding its cards.
+**What changed:**
+- **`components/StatusGroup.tsx`:** one dropdown per status. The header shows the chip, the item count and a
+  one-line meaning, and a coloured edge marks the section. Inside is the grid of cards.
+  - Too late and Order this week start open (they need action this week); Order soon starts closed.
+  - Cards inside a status dropdown don't repeat its chip.
+- **Fix:** every dropdown now has its own named Tailwind group: card, section, disclosure, stuck, po, shipment and
+  item. With the shared `group` from #28, closed cards inside an open section ("Everything else looks fine") showed
+  "Close" and a turned arrow. That bug was live after #28 and is fixed here.
+- ADR-025 updated.
+**Impact:**
+- **Section check (local and live):**
+  - three sections in order: Too late (3, open), Order this week (6, open), Order soon (5, closed);
+  - no card repeats its section's chip;
+  - 31 closed cards all show "Details".
+- **Bubble check still passes:** none appear when a card opens; hovering "cushion" shows only its own.
+- Every page at 1280 px and 375 px has no errors and no sideways scrolling.
+- The Monday, PO and shipment click-throughs pass locally, on a fresh database. 270 backend tests pass; the
+  frontend build, lint and format are clean.
+**Decisions made (and by whom):**
+- Ishan: one dropdown per status.
+- Claude: Too late and Order this week start open and Order soon closed; no repeated chips; Handled, Late or unknown
+  and Fine stay as they were (below the three).
+**AI mistakes caught or corrected:**
+- **The #28 grid shipped a second shared-`group` bug.** Closed cards inside an open section looked open. Claude
+  found it by listing every `group` use before nesting more dropdowns.
+- **Two mistakes in Claude's own section check:**
+  - it found chips by their rounded corners, but the stock bar is rounded too;
+  - it compared against `undefined`, but values come back from the browser as JSON, where that becomes `null`.
+  Both were fixed in the check; the app was right.
+**Follow-ups:** Step 6.3 (Import) is next, when Ishan says go.
