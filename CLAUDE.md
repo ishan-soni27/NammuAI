@@ -29,11 +29,13 @@ including tiny prompts, no-op prompts and prompts where you made a mistake. Log 
    `data/raw/bluetide_*.csv` are byte-identical working copies (`shasum -a 256 -c data/raw_checksums.sha256`).
    All cleaning happens in code, and every change is logged to `data_issues`.
 3. **Business numbers live only in `backend/app/config/business_rules.py` and `data/reference/*.csv`.** No magic numbers elsewhere.
+   Every load stores a copy of `data/reference/*.csv` on its load run; the website's import uses the last copy (ADR-029).
 4. **No hard-coded item, order, customer or vendor codes in logic.** Use seeds (`data/reference/`) or customer_type/vendor_type.
 5. **The loader never truncates app-layer tables** (`vendor_settings`, `item_settings`, `po_eta_overrides`, `handled_flags`,
    and Dana's own records since Phase 6: `app_vendors`, `app_items`, `purchase_orders`, `purchase_order_lines_app`,
-   `po_line_status`, `stock_movements`, `app_customers`, `shipments`, `shipment_lines`). They never get foreign keys
-   into BlueTide's tables (`APP_LAYER` in models.py).
+   `po_line_status`, `stock_movements`, `app_customers`, `shipments`, `shipment_lines`, `uploads`, `upload_files`,
+   `stock_counts`, `stock_count_lines`, `app_sales_lines`). They never get foreign keys into BlueTide's tables
+   (`APP_LAYER` in models.py).
    Vendor settings seeds are inserted only if missing.
 6. Read raw CSVs as strings (`dtype=str, keep_default_na=False`). They are CRLF. Use `Decimal`/numeric for quantities and money, and `date` for business dates.
 7. Trap IDs (T01–T31) and golden facts (G01–G17) appear in code comments, test names and `docs/DATA_AUDIT.md`.
@@ -52,11 +54,13 @@ backend/app/planning/        PURE engine (no DB/clock/I/O): seasonality, demand,
                              records (Dana's records matched with BlueTide's: R1-R6 POs, R7-R10 orders/moves; ADR-027/028)
 backend/app/services/        planning_inputs (DB → engine inputs: BlueTide cached per load + Dana's records fresh),
                              records_service (POs, receipts, items, suppliers), shipments_service (orders, picks, moves,
-                             customers), planning_service, presenters (→ DTOs),
+                             customers), import_service + template_import (imports from the website), planning_service,
+                             presenters (→ DTOs),
                              audit (audit rows in the same transaction, request_log, event_log)
 backend/app/api/v1/          routers: health, items (dashboard/drill-down/handled/settings/new items), suppliers (vendors,
                              new suppliers, PO dates), purchase_orders (list, create, ship, cancel, receive, undo, locations),
                              shipments (customers, orders, picks, ship/cancel/undo, stock lots, stock changes, moves),
+                             imports (upload, check, load, templates),
                              activity (data notes, audit, events, load runs, settings); schemas.py; docs at /api/v1/docs
 backend/tests/               unit/ (per trap), golden/ (real data, G01–G17), api/
 frontend/src/                api/ (client, types mirroring schemas.py, queries.ts = one hook per endpoint + edits)
@@ -74,7 +78,8 @@ pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env                # paste the Supabase *session pooler* URL (port 5432) into DATABASE_URL
 python3 ../scripts/set_database_password.py   # puts the password in safely (hidden, URL-encoded)
 alembic upgrade head                # create/upgrade tables (RLS on every table)
-python -m app.loader.run            # load BlueTide CSVs (~2 min from a laptop; safe to re-run; writes docs/DATA_LOAD_REPORT.md)
+python -m app.loader.run            # load BlueTide CSVs (~2 min from a laptop; safe to re-run; writes docs/DATA_LOAD_REPORT.md;
+                                    #  stores the reference seeds the website's import uses. Dana can also import on /data)
 python -m app.loader.run --dry-run  # run every rule + write the report, touch no database
 uvicorn app.main:app --reload       # API docs: http://localhost:8000/api/v1/docs
 pytest                              # all tests; never touches the real DB (API tests use a SQLite copy of the real data, ADR-023)
@@ -116,6 +121,8 @@ python3 scripts/profile_data.py
 | "Add a field to a PO" or "a new PO status" | Model + migration (app layer), `planning/records.py` if it changes what's counted, `services/records_service.py`, `PORow.tsx` |
 | "Count a BlueTide receipt differently" | The R1-R6 rules in `planning/records.py` (one test per rule in `tests/unit/planning/test_records.py`) |
 | "Ship part of an order" / "pick lots differently" | `services/shipments_service.py` (`_plan_picks`, `ship`) and R10 in `planning/records.apply_movements` |
+| "Add a column to a template" or "a new template" | `services/template_import.py` (`TEMPLATES`, `_parse_row`, `load`); the Data page lists templates from the API |
+| "Change what blocks an import" | `services/import_service._check_bluetide` (blockers vs warnings) |
 | "Filter by vendor or category" | Frontend only. The dashboard already returns vendor and category |
 | "Harbor cost per month" | Add pallet rate to `locations` and cases-per-pallet to `pack_sizes.csv`, then compute in `planning/stuck.py` |
 

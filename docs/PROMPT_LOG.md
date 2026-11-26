@@ -875,3 +875,70 @@ holding its cards.
   - it compared against `undefined`, but values come back from the browser as JSON, where that becomes `null`.
   Both were fixed in the check; the app was right.
 **Follow-ups:** Step 6.3 (Import) is next, when Ishan says go.
+
+## #30 | 2026-11-27 18:55 UTC | "go": step 3, Import
+**Prompt (simplified):** Start step 3 of Phase 6: imports from the website.
+**What changed:**
+- **Loader:**
+  - `read_raw_bytes`, with upload checks: required columns per export, no empty files;
+  - `write_load(use_copy=False)` for production, because its database connection has no COPY;
+  - `load_runs.reference` keeps the seed CSVs from each load.
+- **Migration 0004** (applied to Supabase; no drift; RLS on every table): `uploads`, `upload_files`, `stock_counts`,
+  `stock_count_lines`, `app_sales_lines`, and the `load_runs.reference` column.
+- **`services/import_service.py`** (BlueTide): upload into slots, then check, then load.
+  - Empty slots reuse the last load's file, rebuilt from `raw_rows`.
+  - Blockers: a stock count after today or older than the loaded one, missing files, no stored seeds.
+  - Warnings: rows halved, the same files as last time.
+  - The check also shows what would change, the cleanup count, and conflicts with Dana's records.
+  - The load needs a one-time code. Stale running loads are marked failed first.
+- **`services/template_import.py`** (Dana's own templates: suppliers, items, customers, stock count, POs, sales
+  history): every row is checked, problems block the load with file and line, and the load is all-or-nothing.
+  - **Planning:** her newest stock count is the starting stock for the items it lists when it's newer than
+    BlueTide's; her sales history feeds the selling rate.
+- **API:** `/imports` (start, PUT files, check, load, discard), `/import-templates/{slot}.csv`.
+- **Data page** (replaces Data notes):
+  - Load new BlueTide files, or Load your own spreadsheets;
+  - slots with Choose file, template downloads, the check report, Load, Start over;
+  - past imports;
+  - the data notes fold away below.
+- **Production:** migration 0004 applied; **one laptop load (run #6)** so production has a stored copy of the seeds.
+  Same files, so the same numbers, and all five suppliers' settings were kept.
+- Docs: ADR-029, A41–A45, CLAUDE.md (invariants 3 and 5, code map, playbook, commands), PRIORITIES (P0 #12 done),
+  the data load report for run #6.
+**Impact:**
+- **Checks:** 278 backend tests pass (8 new import tests on the real data). Ruff, build, lint and format are clean.
+  The raw files are unchanged.
+- **Local click-through:**
+  - BlueTide: upload the stock-on-hand file, check ("same files: nothing changes"), load; the numbers stay
+    3/6/5/16;
+  - templates: a bad items row is blocked with its line ("pounds per case is needed"); then suppliers, items and a
+    stock count load, and KB-COD6 shows 120 cases from Gloucester Fillet Co.
+- **Live:**
+  - the BlueTide import of the real stock-on-hand file passes through production (load run #7, **6 seconds**), with
+    the numbers unchanged;
+  - every page has no errors and no sideways scrolling at 1280 px and 375 px;
+  - the section and Monday click-throughs pass.
+  The template path wasn't run on live, because it would add permanent test records.
+- Screenshots: `docs/screenshots/phase6-step3/` (not committed).
+**Decisions made (and by whom):**
+- Ishan: "go".
+- Claude:
+  - template rows are all-or-nothing (A44);
+  - imported POs whose arrival has passed load as late (A45);
+  - sales history covers past sales only; open orders go on the Shipments page;
+  - upload checks apply to website uploads only, so the laptop loader's behaviour is unchanged;
+  - the data notes fold away on the Data page.
+**AI mistakes caught or corrected:**
+- **The new column check first applied to every read.** That broke a reader test that uses a tiny made-up file, so
+  the check now applies to uploads only.
+- **Format-skip markers again stopped the formatter from wrapping long lines.** Removed.
+- **An edit to the API client didn't match after the formatter had reshaped it.** The edit's own check caught it and
+  wrote nothing; it was redone directly.
+- On re-runs, the PO click-through stops at "add supplier" because the import test had already added that supplier
+  to the same preview database. That's test data: the app correctly refuses the duplicate name.
+**Follow-ups:**
+- **Step 6.4** (CSV downloads) is next, when Ishan says go.
+- Known limits:
+  - a brand-new install needs one laptop load for the buildings;
+  - files over 4.4 MB must be split;
+  - "today" is still fixed at Nov 16.

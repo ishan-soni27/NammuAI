@@ -51,6 +51,11 @@ Confirmed by Dana (date) · Decided by Ishan (date) · Assumption (not asked; ou
 | A38 | Orders to our own buildings | Refused: transfers between buildings are stock moves (the loader treats INTERNAL customers as transfers, T16) | Claude, Phase 6 | `services/shipments_service.py` | Assumption (flagged to Ishan) |
 | A39 | Open samples | Counted as promised (they leave stock on their ship date) but never as demand once shipped (T17) | Claude, Phase 6 | `planning/records.py` | Assumption (flagged to Ishan) |
 | A40 | New customer's type default | Restaurant (most of Kestrel Bay's customers), never the cruise line's type | Claude, Phase 6 | `NewShipmentPage.tsx` | Assumption |
+| A41 | BlueTide import: files not uploaded | Reuse the last load's copy of that file (from raw_rows); the check says which | Phase 6 plan | `services/import_service.py` | Approved with the plan |
+| A42 | BlueTide import: a stock count after today, or older than the loaded one | Blocked (the loader's expiry and late-PO rules use today; going back in time would undo newer data) | Phase 6 plan | `services/import_service.py` | Approved with the plan |
+| A43 | Dana's stock count vs BlueTide's | Per item, the newer count is the starting stock; for her count, receipts/picks/moves dated on or before it are already in it | Phase 6 amendment (independence) | `services/planning_inputs.py` | Approved with the plan |
+| A44 | Dana's template rows with any problem | Nothing loads until every row is right (all-or-nothing), each problem shown with file and line | Claude, Phase 6 | `services/template_import.py` | Assumption (flagged to Ishan) |
+| A45 | Imported POs whose computed arrival date has passed | Loaded as late (not counted) until she sets a real date, like BlueTide's late POs (Dana Q3) | Claude, Phase 6 | `services/template_import.py` | Assumption (flagged to Ishan) |
 
 ## Notes for explaining these in the review
 - **Why conservative?** Every default above leans toward ordering a little early: the upper end of the lead-time range,

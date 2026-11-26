@@ -20,7 +20,7 @@ The working copy of BUILD_PROMPT §11 (P0 / P1 / P2), kept up to date as Ishan a
 | 9 | Ship it: live deploy, loader, tests, README, DECISIONS, ASSUMPTIONS, DEMO_SCRIPT | 1–7 | Deploy live; README, DEMO_SCRIPT and final docs in Phase 7 |
 | 10 | **Log POs and track them to received** (Ishan, 2026-11-26): new PO, shipped, received (lot, expiry, building), cancelled; counts as on the way, then as stock. Plus her own items and suppliers (independent of BlueTide) | 6.1 | Done (ADR-027); live |
 | 11 | **Log outgoing shipments** (Ishan, 2026-11-26): customer orders out; promised, then shipped (lots picked); move stock between buildings | 6.2 | Done (ADR-028); live |
-| 12 | **Import from the website** (Ishan, 2026-11-26): BlueTide's files *or* Dana's own templates (items, suppliers, customers, stock count, POs, sales history); dry run, then load; never touches Dana's records | 6.3 | Next, waiting for "go" |
+| 12 | **Import from the website** (Ishan, 2026-11-26): BlueTide's files *or* Dana's own templates (items, suppliers, customers, stock count, POs, sales history); dry run, then load; never touches Dana's records | 6.3 | Done (ADR-029); live |
 | 13 | **Download to Excel (CSV)** (Ishan, 2026-11-26): order list, stuck list, POs, shipments | 6.4 | Planned |
 
 ## P1: after P0, in this order

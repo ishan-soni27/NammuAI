@@ -455,3 +455,45 @@ also has the order, and keep working with no BlueTide data.
 - With "today" fixed at Nov 16, new sales are outside the 8-week selling-rate window: they change stock and promised
   orders, not the selling rate, until "today" moves (ADR-026 follow-up).
 - Shipping is all-or-nothing per order (no partial shipments yet).
+
+## ADR-029 Imports from the website: check first, then load; BlueTide's files or Dana's own templates
+**Date:** 2026-11-26 · **Decided by:** Ishan (Phase 6 plan, step 3 "go"; "it should be able to be its own independent
+system"); design by Claude after the design review
+
+**Context.** Dana must be able to bring in next week's BlueTide exports herself, or, for the app to stand without
+BlueTide, her own data. The deployed API can't see `data/` (its root is `backend/`), production's database
+connection (the transaction pooler) has no COPY, and Vercel caps a request at 4.5 MB.
+
+**Decision.**
+- **Three steps, always:** upload files into slots (one request per file, the bytes kept exactly so the SHA-256
+  matches), **check** (a dry run that writes nothing but its report), **load** (only with the check's one-time code).
+  A new file after a check needs a new check.
+- **BlueTide:**
+  - wrong or empty files are refused on upload (required columns per export);
+  - slots left empty reuse the last load's file, rebuilt from `raw_rows`;
+  - the check runs the real loader and reports **blockers** (stock count after today, older than the loaded one,
+    missing files, no stored seeds), **warnings** (rows halved, same files), what would change, the cleanup count,
+    and what it does to Dana's records (R4/R7 conflicts, items her records use that the files drop);
+  - the load uses `write_load(use_copy=False)` in one transaction and never touches her tables;
+  - stale "running" loads are marked failed first.
+- **Seeds travel with each load:** `load_runs.reference` keeps `data/reference/*.csv` as read. The website's import
+  uses the last load's copy, so changing a seed still means a laptop load (run #6 stored the first copy).
+- **Dana's templates** (suppliers, items, customers, stock count, POs, sales history):
+  - downloaded with their header row, filled in Excel, uploaded;
+  - every row is checked, and codes may come from another file in the same import;
+  - any problem blocks the load, listed by file, line and what to fix; the load is all-or-nothing;
+  - her copy wins on the same code.
+  - **A stock count** is the starting stock for the items it lists when it's newer than BlueTide's. Receipts, picks
+    and moves dated on or before it are already in it.
+  - **Sales history** feeds the selling rate (classified like BlueTide's sales), never stock.
+
+**Verified.**
+- 8 API tests, including a full reload of the real files through the API (numbers unchanged, her PO kept), refused
+  files, after-today and older counts blocked, a full template set planned with no BlueTide data for the new item,
+  and a bad row reported with its line.
+- A browser click-through of both paths.
+- A live import of the real stock-on-hand file through production.
+
+**Known limits.** Buildings still come from the reference seeds (a brand-new install needs one laptop load first);
+open customer orders aren't in the sales-history template (they're logged on the Shipments page); a file over
+4.4 MB must be split.
