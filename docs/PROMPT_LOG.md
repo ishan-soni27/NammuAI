@@ -648,3 +648,18 @@ system: Dana must be able to log and track her future imports and exports, not j
   removed, and it was replaced by `OrderRow.tsx`.
 **Follow-ups:** The Phase 6 plan (logging and tracking) is posted and waiting for "go" plus two decisions: how
 business "today" moves, and the order of the steps.
+
+## #25 | 2026-11-26 11:20 UTC | "plan the logging phase now"
+**Prompt (simplified):** Write the detailed plan for Phase 6: Dana logs and tracks her own work (POs, outgoing
+shipments, BlueTide uploads, CSV downloads).
+**What changed:** Nothing in the app. Claude read the engine inputs (`planning/types.py`), the PO arrival rule
+(`planning/supply.py`), how inputs are built (`services/planning_inputs.py`), the loader writer (TRUNCATE of the clean
+tables), the app tables, the AS_OF setting and the deploy config. It then wrote the Phase 6 plan in plan mode for
+Ishan's approval. This entry is updated when the plan is approved or changed.
+**Impact:** Plan only.
+**Decisions made (and by whom):** Pending Ishan: how business "today" moves, the order of the steps, and the rule for
+when BlueTide and the app disagree about whether a PO has arrived.
+**AI mistakes caught or corrected:** Claude's earlier recommendation (prompt #24) was "today = the day after the newest
+BlueTide snapshot". That breaks once the app replaces BlueTide: with no more uploads, "today" would never move. The
+plan corrects it.
+**Follow-ups:** Approval of the plan.
