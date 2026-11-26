@@ -586,3 +586,16 @@ notes, activity, and all states).
   are in `docs/screenshots/phase5/` (6 MB, not committed; Ishan decides whether some go into the README).
 - The preview, screenshot and click-through scripts live in the session scratch folder. If Ishan wants them in the
   repo (e.g. `scripts/ui_check.mjs`), that's a small Phase 6 task.
+
+## #23 | 2026-11-26 10:45 UTC | "How do I run or check the site? Is it on Vercel? Do I need to redeploy?"
+**Prompt (simplified):** How do I run the site or check it? Is it on Vercel, and do I need to redeploy?
+**What changed:** Nothing in the app. This log entry only (committed locally; it goes out with the next push).
+**Impact:** Claude checked, read-only:
+- the live site serves the newest bundle (index-AumSq0EA.js);
+- /api/v1/health reports version `e117ace` (the latest commit on main) with the database ok;
+- GitHub shows Vercel's status for e117ace as "Deployment has completed".
+So no redeploy is needed. Every push to main deploys automatically. Claude explained how to run it locally and which
+checks to run.
+**Decisions made (and by whom):** None.
+**AI mistakes caught or corrected:** None.
+**Follow-ups:** Phase 6 is waiting for "go".
