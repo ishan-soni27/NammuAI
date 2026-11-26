@@ -1044,3 +1044,74 @@ types how many cases fit on a pallet; $30 per pallet per month; add rows to a ta
 - Possible later: the Harbor $ a month beside each Harbor lot on Monday's stuck list; a rate per warehouse if there's
   ever more than one.
 - Still open: Ishan to confirm the Vercel cron.
+
+## #33 | 2026-11-26 19:55 UTC | "go, how do I confirm the vercel cron": the final docs phase
+**Prompt (simplified):** Start the README / demo / final docs phase (BUILD_PROMPT §14's last phase), and explain how
+to confirm the Vercel cron.
+**What changed:**
+- **The cron, confirmable from our own log:**
+  - calls with Vercel's `vercel-cron/…` User-Agent and no X-Actor are now logged as actor **"Vercel cron"**
+    (`middleware.actor_for`, with a test);
+  - `scripts/check_cron.py` lists the last ten.
+  - Before this change, nothing could prove the cron had fired: every request without a name was logged as "Dana",
+    and the user agent isn't stored. There were two unnamed health calls on Nov 26 in the 12:00 UTC hour, but my own
+    curl checks look the same.
+- **README.md**, the full submission per §13.5:
+  - what it does and why, with three live screenshots in `docs/images/`;
+  - the live link and one minute of use;
+  - what's on each page;
+  - how it works (a Mermaid diagram, parsed and rendered with Mermaid 11 to check it);
+  - key assumptions, and the answer-key comparison explained;
+  - data problems (4,047 notes);
+  - out of scope (updated for Phase 6), next steps and the scale path;
+  - how AI was used, with nine real mistakes and how each was caught;
+  - local setup, tests and deploy;
+  - a docs map.
+- **docs/DEMO_SCRIPT.md** (new): 10 minutes for Dana, with every number read from the live site and every button
+  label checked in the code, plus "before the demo", undo steps and "if something goes wrong".
+- **docs/DECISIONS.md**:
+  - every ADR now has Context, Decision, Alternatives, Tradeoffs and Revisit when, plus who decided;
+  - ADR-001 and 003–016 were written out from BUILD_PROMPT §13.3 and the code, and 022, 024–031 were completed;
+  - there's an index table at the top;
+  - ADR-030's date was corrected.
+  The first draft was written by a parallel Claude helper and spot-checked (claims sourced, no decision changed, only
+  placeholders removed).
+- **ASSUMPTIONS:** A18 no longer says the late calamari PO gets an ETA (since Dana's reply it isn't counted until she
+  types a date).
+- **CLAUDE.md:** a playbook row for "pretend today is a different day" (`AS_OF_DATE`), and `check_cron.py` in the map.
+**Impact:**
+- **Checks:** 293 backend tests pass. Ruff, build, lint and format are clean.
+- **Live (version d5b106d):**
+  - the smoke test passes as "Claude (final smoke test)": mark handled and clear it, set a PO date and clear it, data
+    notes with file and line, 6 activity entries. Both test edits were reversed;
+  - all 12 pages have no errors and no sideways scrolling at 1280 or 375 px;
+  - all five downloads work;
+  - Monday is unchanged at 3/6/5/16.
+- The lead-time edit was skipped on live, as in earlier phases, because it would overwrite the source note on a
+  supplier Dana confirmed. It's covered by the API tests and the local click-through.
+**Decisions made (and by whom):**
+- Ishan: "go".
+- Claude:
+  - the README lists nine AI mistakes from the log, each with how it was caught;
+  - the demo script undoes everything it changes;
+  - the diagram reads top to bottom (narrower on GitHub);
+  - cron calls are named in the request log rather than adding a user-agent column (no migration).
+**AI mistakes caught or corrected:**
+- **Guessed labels and timestamps in the first demo script draft:**
+  - "Details" (the link is "See why and all the numbers");
+  - "Clear" (it's "Clear this note");
+  - quote times 00:13 and 00:05 (they're 00:11:00 and 00:04:40);
+  - SAL-POR8 called fully expired (only its 60-case lot is).
+  All were checked against the code, the transcript and the live data, then fixed.
+- **Three wrong README claims, caught the same way:**
+  - business rules "shown to Dana" (only through the API; no page uses them);
+  - "Shipments moves stock" (moves are on the item page and the stuck list);
+  - "order at least" described loosely.
+  The answer-key paragraph also overclaimed ("every other difference comes from two decisions"); SHR-1215 is a
+  this-week boundary case, now said plainly.
+- **The first diagram's box titles were cut off** in the render. Shortened.
+**Follow-ups:**
+- **Cron:** after 12:00 UTC on Nov 27, run `cd backend && source .venv/bin/activate && python ../scripts/check_cron.py`,
+  or look at Vercel → Project → Settings → Cron Jobs.
+- **Screenshots:** `docs/screenshots/` (all phases) is still uncommitted; only the three README images are in the repo.
+- Then P1 items as Ishan chooses, or the review.
