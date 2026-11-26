@@ -1,10 +1,9 @@
 """Lead times and PO arrival dates: what Dana knows that BlueTide doesn't (BUILD_PROMPT §8.5, P0 #7).
 
-GET   /vendors                                  suppliers, BlueTide's and Dana's: lead time vs Dana's
-POST  /vendors                                  add a supplier (Phase 6: the app works without BlueTide)
+GET   /vendors                                  BlueTide's suppliers: BlueTide's lead time vs Dana's
 PATCH /vendors/{vendor_code}                    change lead time / cushion / order cycle
-PATCH /purchase-orders/{po_no}/lines/{line_no}  type in the real arrival date (null clears it), for
-                                                BlueTide's PO lines and Dana's own (one date table, R1)
+PATCH /purchase-orders/{po_no}/lines/{line_no}  type in the real arrival date of an open BlueTide PO
+                                                line (null clears it)
 
 Walt 00:02:25: "Half of what we actually know lives in Dana's head, not the system." These edits
 live in app-layer tables that the loader never touches (invariant #5), and each one is audited
@@ -23,9 +22,7 @@ from app.db import models as m
 from app.db.session import get_db
 from app.db.sql import utc_now
 from app.errors import AppError
-from app.services import records_service
 from app.services.audit import current_actor, record_change
-from app.services.planning_inputs import build_context
 
 router = APIRouter(tags=["Lead times and PO dates"])
 
@@ -37,14 +34,12 @@ _VENDOR_FIELDS = {
 }
 
 
-def _vendor_out(
-    vendor: m.Vendor | None, setting: m.VendorSetting, mine: m.AppVendor | None = None
-) -> s.VendorOut:
-    """BlueTide's supplier, Dana's, or both (her name and country win)."""
+def _vendor_out(vendor: m.Vendor | None, setting: m.VendorSetting) -> s.VendorOut:
+    """BlueTide's supplier with Dana's numbers."""
     return s.VendorOut(
         vendor_code=setting.vendor_code,
-        name=mine.name if mine else vendor.name if vendor else setting.vendor_code,
-        country=mine.country if mine else vendor.country if vendor else None,
+        name=vendor.name if vendor else setting.vendor_code,
+        country=vendor.country if vendor else None,
         lead_time_days_bluetide=vendor.lead_time_days_system if vendor else None,
         lead_time_bluetide_text=vendor.lead_time_raw if vendor else None,
         lead_time_days=setting.lead_time_days,
@@ -69,11 +64,10 @@ def _setting_dict(setting: m.VendorSetting) -> dict:
 
 def _all_vendors(db: Session) -> list[s.VendorOut]:
     bluetide = {v.vendor_code: v for v in db.scalars(select(m.Vendor)).all()}
-    mine = {v.vendor_code: v for v in db.scalars(select(m.AppVendor)).all()}
     out = [
-        _vendor_out(bluetide.get(setting.vendor_code), setting, mine.get(setting.vendor_code))
+        _vendor_out(bluetide[setting.vendor_code], setting)
         for setting in db.scalars(select(m.VendorSetting)).all()
-        if setting.vendor_code in bluetide or setting.vendor_code in mine
+        if setting.vendor_code in bluetide
     ]
     return sorted(out, key=lambda v: v.name.lower())
 
@@ -81,17 +75,6 @@ def _all_vendors(db: Session) -> list[s.VendorOut]:
 @router.get("/vendors", response_model=list[s.VendorOut])
 def list_vendors(db: Session = Depends(get_db)) -> list[s.VendorOut]:
     return _all_vendors(db)
-
-
-@router.post("/vendors", response_model=s.VendorOut, status_code=201)
-def create_vendor(
-    body: s.VendorCreateIn,
-    db: Session = Depends(get_db),
-    rules: BusinessRules = Depends(get_business_rules),
-) -> s.VendorOut:
-    """A supplier BlueTide doesn't have. Time to arrive and cushion are required (in days)."""
-    code = records_service.create_vendor(db, rules, body)
-    return next(v for v in _all_vendors(db) if v.vendor_code == code)
 
 
 @router.patch("/vendors/{vendor_code}", response_model=s.VendorOut)
@@ -104,9 +87,8 @@ def update_vendor(
     """Dana's real numbers. Only the fields sent change. Days must be within the limits in business_rules."""
     code = vendor_code.strip().upper()
     vendor = db.get(m.Vendor, code)
-    mine = db.get(m.AppVendor, code)
     setting = db.get(m.VendorSetting, code)
-    if (vendor is None and mine is None) or setting is None:
+    if vendor is None or setting is None:
         raise AppError(
             404, "vendor_not_found", f"We couldn't find supplier {vendor_code!r} on the Lead times list."
         )
@@ -141,7 +123,7 @@ def update_vendor(
         after=_setting_dict(setting),
     )
     db.commit()
-    return _vendor_out(vendor, setting, mine)
+    return _vendor_out(vendor, setting)
 
 
 @router.patch("/purchase-orders/{po_no}/lines/{line_no}", response_model=s.PoEtaOut)
@@ -153,12 +135,18 @@ def set_po_arrival(
     rules: BusinessRules = Depends(get_business_rules),
 ) -> s.PoEtaOut:
     """The email promised Dana she could type in a real arrival date for late POs (Q3). Null clears it."""
-    ctx = build_context(db, rules)
-    line = next((x for x in ctx.reconciled.lines if (x.po_no, x.line_no) == (po_no, line_no)), None)
+    # BlueTide's PO line, as the latest upload has it (the clean layer). Only an open line with
+    # something still to come can get a date; BlueTide records receipts and cancellations.
+    line = db.scalars(
+        select(m.PurchaseOrderLine).where(
+            m.PurchaseOrderLine.po_no == po_no, m.PurchaseOrderLine.line_no == line_no
+        )
+    ).first()
     if line is None:
         raise AppError(404, "po_line_not_found", f"We couldn't find {po_no} line {line_no}.")
-    if line.status in ("received", "cancelled"):
-        raise AppError(409, "po_not_open", f"{po_no} line {line_no} is {line.status}, so nothing is coming.")
+    if line.status != "open" or not line.qty_remaining_sell_uom or line.qty_remaining_sell_uom <= 0:
+        state = "cancelled" if line.status == "cancelled" else "fully received"
+        raise AppError(409, "po_not_open", f"{po_no} line {line_no} is {state}, so nothing is coming.")
     override = db.get(m.PoEtaOverride, (po_no, line_no))
     before = {"eta": override.eta, "note": override.note} if override else None
 

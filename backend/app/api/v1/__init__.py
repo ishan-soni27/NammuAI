@@ -2,10 +2,9 @@
 
     health.py      GET /health
     items.py       Monday screen, items, drill-down, handled notes, item settings
-    suppliers.py   lead times (vendors), new suppliers, PO arrival dates
-    purchase_orders.py  POs (BlueTide's and Dana's), ship, cancel, receive, undo
-    shipments.py   customers, orders going out, picks, stock moves
-    imports.py     imports from the website: BlueTide's files or Dana's templates
+    suppliers.py   lead times (vendors) and real PO arrival dates
+    purchase_orders.py  On the way: BlueTide's open PO lines (read only)
+    imports.py     weekly uploads of BlueTide's files from the website
     exports.py     download any list as a CSV for Excel
     harbor.py      Harbor storage cost: cases per pallet, pallets, $ a month, her saved table
     activity.py    data notes, audit log, events, load runs, settings, client events
@@ -24,7 +23,6 @@ from app.api.v1 import (
     imports,
     items,
     purchase_orders,
-    shipments,
     suppliers,
 )
 
@@ -33,7 +31,6 @@ api_router.include_router(health.router)
 api_router.include_router(items.router)
 api_router.include_router(suppliers.router)
 api_router.include_router(purchase_orders.router)
-api_router.include_router(shipments.router)
 api_router.include_router(imports.router)
 api_router.include_router(exports.router)
 api_router.include_router(harbor.router)

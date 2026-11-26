@@ -163,13 +163,12 @@ def summary_sentences(
 
 
 def late_line_out(p: ItemPlan, line: IncomingLine) -> s.LateLineOut:
-    po_no, line_no = _po_ref(line)
     return s.LateLineOut(
         item_code=p.item.item_code,
         description=p.item.description,
         sell_uom=p.item.sell_uom,
-        po_no=po_no,
-        line_no=line_no,
+        po_no=line.po_no,
+        line_no=line.line_no,
         reference=line.reference,
         qty=line.qty,
         bluetide_date=line.bluetide_date,
@@ -177,21 +176,12 @@ def late_line_out(p: ItemPlan, line: IncomingLine) -> s.LateLineOut:
     )
 
 
-def _po_ref(line: IncomingLine) -> tuple[str | None, int | None]:
-    """'PO-260443 line 1' -> ('PO-260443', 1); notes have no PO."""
-    if line.source != "po":
-        return None, None
-    po_no, _, rest = line.reference.partition(" line ")
-    return po_no, int(rest) if rest.isdigit() else None
-
-
 def incoming_out(line: IncomingLine) -> s.IncomingOut:
-    po_no, line_no = _po_ref(line)
     return s.IncomingOut(
         source=line.source,
         reference=line.reference,
-        po_no=po_no,
-        line_no=line_no,
+        po_no=line.po_no,
+        line_no=line.line_no,
         qty=line.qty,
         eta=line.eta,
         eta_source=line.eta_source,

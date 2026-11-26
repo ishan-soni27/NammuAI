@@ -1,120 +1,30 @@
-"""Purchase orders: BlueTide's and Dana's in one list, and everything she can do to them (Phase 6 step 1).
+"""On the way: BlueTide's open PO lines, as the plan counts them (ADR-032).
 
-GET    /purchase-orders?status=open|late|received|cancelled|all&q=   one list, matched (R1-R6)
-GET    /purchase-orders/{po_no}
-POST   /purchase-orders                                    create a PO (KB-00001 if no number)
-POST   /purchase-orders/{po_no}/lines/{line_no}/ship       mark a line shipped (container, new date)
-POST   /purchase-orders/{po_no}/lines/{line_no}/cancel     cancel a line
-DELETE /purchase-orders/{po_no}/lines/{line_no}/status     undo "shipped" or "cancelled"
-POST   /purchase-orders/{po_no}/lines/{line_no}/receive    receive stock: qty, building, lot, expiry
-POST   /stock-movements/{movement_id}/undo                 reverse a receipt (the history stays)
-GET    /locations                                          the buildings (for the receive form)
+GET /purchase-orders?q=   every open BlueTide PO line with something still to come: our arrival date
+                          (Dana's, the real lead time, or BlueTide's), BlueTide's own date, and whether
+                          it's late (late = not counted until Dana sets a real date; Dana Q3).
 
-The expected date of a line is set with the existing PATCH /purchase-orders/{po_no}/lines/{line_no}
-(suppliers.py), for BlueTide's lines and Dana's alike. Every write is audited (services/audit.py).
+BlueTide owns the POs: they are created, shipped and received there and arrive here with each upload.
+The one thing Dana adds is the real arrival date: PATCH /purchase-orders/{po}/lines/{line} (suppliers.py).
 """
 
 from __future__ import annotations
 
-from typing import Literal
-
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.v1 import schemas as s
 from app.config.business_rules import BusinessRules, get_business_rules
-from app.db import models as m
 from app.db.session import get_db
-from app.services import records_service as svc
+from app.services import planning_service
 
-router = APIRouter(tags=["Purchase orders"])
+router = APIRouter(tags=["On the way"])
 
 
-@router.get("/purchase-orders", response_model=list[s.POOut])
-def list_purchase_orders(
-    status: Literal["open", "late", "received", "cancelled", "all"] = "open",
-    q: str | None = Query(default=None, max_length=80),
+@router.get("/purchase-orders", response_model=list[s.OnTheWayLineOut])
+def on_the_way(
+    q: str | None = Query(None, max_length=60, description="Search PO, item code, item name or supplier."),
     db: Session = Depends(get_db),
     rules: BusinessRules = Depends(get_business_rules),
-) -> list[s.POOut]:
-    return svc.purchase_orders(db, rules, status, q)
-
-
-@router.get("/purchase-orders/{po_no}", response_model=s.POOut)
-def get_purchase_order(
-    po_no: str, db: Session = Depends(get_db), rules: BusinessRules = Depends(get_business_rules)
-) -> s.POOut:
-    return svc.purchase_order(db, rules, po_no)
-
-
-@router.post("/purchase-orders", response_model=s.POOut, status_code=201)
-def create_purchase_order(
-    body: s.POCreateIn, db: Session = Depends(get_db), rules: BusinessRules = Depends(get_business_rules)
-) -> s.POOut:
-    """Dana places an order. It counts as on the way at once, on its expected date."""
-    return svc.create_purchase_order(db, rules, body)
-
-
-@router.post("/purchase-orders/{po_no}/lines/{line_no}/ship", response_model=s.POOut)
-def ship_line(
-    po_no: str,
-    line_no: int,
-    body: s.POShipIn,
-    db: Session = Depends(get_db),
-    rules: BusinessRules = Depends(get_business_rules),
-) -> s.POOut:
-    return svc.ship_line(db, rules, po_no, line_no, body)
-
-
-@router.post("/purchase-orders/{po_no}/lines/{line_no}/cancel", response_model=s.POOut)
-def cancel_line(
-    po_no: str,
-    line_no: int,
-    body: s.POCancelIn,
-    db: Session = Depends(get_db),
-    rules: BusinessRules = Depends(get_business_rules),
-) -> s.POOut:
-    return svc.cancel_line(db, rules, po_no, line_no, body)
-
-
-@router.delete("/purchase-orders/{po_no}/lines/{line_no}/status", response_model=s.POOut)
-def reopen_line(
-    po_no: str,
-    line_no: int,
-    db: Session = Depends(get_db),
-    rules: BusinessRules = Depends(get_business_rules),
-) -> s.POOut:
-    return svc.reopen_line(db, rules, po_no, line_no)
-
-
-@router.post("/purchase-orders/{po_no}/lines/{line_no}/receive", response_model=s.POOut, status_code=201)
-def receive_line(
-    po_no: str,
-    line_no: int,
-    body: s.POReceiveIn,
-    db: Session = Depends(get_db),
-    rules: BusinessRules = Depends(get_business_rules),
-) -> s.POOut:
-    """Stock arrived. It becomes a lot in that building (and counts for the six-month line)."""
-    return svc.receive_line(db, rules, po_no, line_no, body)
-
-
-@router.post("/stock-movements/{movement_id}/undo", response_model=s.MovementOut, status_code=201)
-def undo_movement(movement_id: int, body: s.UndoIn, db: Session = Depends(get_db)) -> s.MovementOut:
-    return svc.undo_movement(db, movement_id, body)
-
-
-@router.get("/locations", response_model=list[s.LocationOut])
-def list_locations(db: Session = Depends(get_db)) -> list[s.LocationOut]:
-    return [
-        s.LocationOut(
-            code=x.code,
-            name=x.name,
-            is_sellable=x.is_sellable,
-            may_return_to_stock=x.may_return_to_stock,
-            is_third_party_storage=x.is_third_party_storage,
-            can_receive=x.is_sellable or x.may_return_to_stock,
-        )
-        for x in db.scalars(select(m.Location).order_by(m.Location.code)).all()
-    ]
+) -> list[s.OnTheWayLineOut]:
+    return planning_service.on_the_way(db, rules, q)

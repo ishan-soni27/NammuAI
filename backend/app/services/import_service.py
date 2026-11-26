@@ -1,9 +1,9 @@
-"""Imports from the website (Phase 6 step 3; ADR-029): BlueTide's export files, or Dana's own templates.
+"""Imports from the website (ADR-029): Dana uploads BlueTide's export files every week.
 
 Every import goes the same three steps, so nothing is ever loaded blind:
   1. upload files into slots (each file on its own request: Vercel caps a request at 4.5 MB),
   2. check: a dry run that writes nothing and reports what would change, what's wrong (blockers stop
-     the load), what looks odd (warnings), and how Dana's own records are affected,
+     the load) and what looks odd (warnings),
   3. load, with the one-time code the check handed out.
 
 BlueTide's files go through the real loader (loader/pipeline.build_dataset, loader/write.write_load),
@@ -12,8 +12,7 @@ last load's file (rebuilt from raw_rows). The reference seeds come from the last
 (the deployed API doesn't ship data/reference). Production connects through Supabase's transaction
 pooler, so the writer uses plain batched inserts there (no COPY).
 
-Dana's own templates (suppliers, items, customers, stock count, POs, sales history) are handled by
-services/template_import.py with the same check-then-load flow.
+BlueTide owns every fact (ADR-032): the files are the only way stock, sales and POs get in.
 """
 
 from __future__ import annotations
@@ -32,7 +31,6 @@ from app.config.settings import get_settings
 from app.db import models as m
 from app.db.sql import utc_now
 from app.errors import AppError
-from app.loader.convert import to_sell_uom
 from app.loader.pipeline import build_dataset
 from app.loader.read_raw import RAW_FILES, RawFileError, read_raw_bytes
 from app.loader.reference import REFERENCE_DIR, load_reference_from_texts, reference_texts
@@ -40,8 +38,6 @@ from app.loader.report import TRAP_TITLES
 from app.loader.types import LoadResult, RawFile, RawRecord, SourceRef
 from app.loader.write import fail_load_run, start_load_run, write_load
 from app.planning.explain import day
-from app.planning.records import AppPOLine, BlueTidePOLine, reconcile_pos
-from app.services import template_import
 from app.services.audit import current_actor, record_change
 from app.services.planning_inputs import clear_cache
 
@@ -58,15 +54,10 @@ BLUETIDE_LABELS = {
 }
 
 
-def _slots(kind: str) -> list[s.ImportSlotOut]:
-    if kind == "bluetide":
-        return [
-            s.ImportSlotOut(slot=slot, label=BLUETIDE_LABELS[slot], expected_name=name, columns=[])
-            for slot, name in RAW_FILES.items()
-        ]
+def _slots() -> list[s.ImportSlotOut]:
     return [
-        s.ImportSlotOut(slot=t.slot, label=t.label, expected_name=f"{t.slot}.csv", columns=list(t.columns))
-        for t in template_import.TEMPLATES.values()
+        s.ImportSlotOut(slot=slot, label=BLUETIDE_LABELS[slot], expected_name=name)
+        for slot, name in RAW_FILES.items()
     ]
 
 
@@ -79,7 +70,7 @@ def _out(db: Session, up: m.Upload) -> s.ImportOut:
         status=up.status,  # type: ignore[arg-type]
         created_at=up.created_at,
         created_by=up.created_by,
-        slots=_slots(up.kind),
+        slots=_slots(),
         files=[
             s.ImportFileOut(
                 slot=f.slot, file_name=f.file_name, rows=f.rows, size_bytes=f.size_bytes, sha256=f.sha256
@@ -109,7 +100,7 @@ def import_detail(db: Session, upload_id: int) -> s.ImportOut:
     return _out(db, _get(db, upload_id))
 
 
-def create_import(db: Session, kind: str) -> s.ImportOut:
+def create_import(db: Session, kind: str = "bluetide") -> s.ImportOut:
     actor = current_actor()
     up = m.Upload(kind=kind, status="open", created_by=actor, updated_by=actor)
     db.add(up)
@@ -142,17 +133,12 @@ def put_file(db: Session, upload_id: int, slot: str, file_name: str, content: by
         )
     if not content.strip():
         raise AppError(422, "file_empty", f"{file_name} is empty.")
-    if up.kind == "bluetide":
-        if slot not in RAW_FILES:
-            raise AppError(404, "unknown_slot", f"There's no BlueTide file called {slot!r}.")
-        try:
-            rows = len(read_raw_bytes(content, RAW_FILES[slot], slot, check=True).records)
-        except RawFileError as error:
-            raise AppError(422, "wrong_file", str(error)) from error
-    else:
-        if slot not in template_import.TEMPLATES:
-            raise AppError(404, "unknown_slot", f"There's no template called {slot!r}.")
-        rows = template_import.count_rows(slot, content)
+    if slot not in RAW_FILES:
+        raise AppError(404, "unknown_slot", f"There's no BlueTide file called {slot!r}.")
+    try:
+        rows = len(read_raw_bytes(content, RAW_FILES[slot], slot, check=True).records)
+    except RawFileError as error:
+        raise AppError(422, "wrong_file", str(error)) from error
     existing = db.execute(
         select(m.UploadFile).where(m.UploadFile.upload_id == up.id, m.UploadFile.slot == slot)
     ).scalar_one_or_none()
@@ -262,76 +248,14 @@ def _assemble(
     return raw, files, texts, blockers
 
 
-def _bluetide_po_lines(result: LoadResult) -> list[BlueTidePOLine]:
-    units = {i.item_code: (i.sell_uom, i.lb_per_case) for i in result.dataset.items}
-    out = []
-    for p in result.dataset.po_lines:
-        sell_uom, lb = units.get(p.item_code, (p.uom, None))
-        ordered = to_sell_uom(p.qty_ordered, p.uom, sell_uom, lb)
-        received = to_sell_uom(p.qty_received, p.uom, sell_uom, lb)
-        out.append(
-            BlueTidePOLine(
-                p.po_no,
-                p.line_no,
-                p.item_code,
-                p.vendor_code,
-                p.order_date,
-                p.expected_date_system,
-                float(ordered) if ordered is not None else None,
-                float(received) if received is not None else 0.0,
-                float(p.qty_remaining_sell_uom)
-                if p.status == "open" and p.qty_remaining_sell_uom is not None
-                else 0.0,
-                p.status,
-            )
-        )
-    return out
-
-
-def _effect_on_danas_records(db: Session, result: LoadResult) -> tuple[list[str], list[str]]:
-    """(conflicts the new files would flag on her records, her records pointing at items they drop)."""
-    conflicts: list[str] = []
-    app_lines = [
-        AppPOLine(
-            po.po_no, line.line_no, line.item_code, po.vendor_code, po.order_date, float(line.qty_ordered)
-        )
-        for po, line in db.execute(
-            select(m.PurchaseOrder, m.PurchaseOrderLineApp).join(
-                m.PurchaseOrderLineApp, m.PurchaseOrderLineApp.po_id == m.PurchaseOrder.id
-            )
-        ).all()
-    ]
-    if app_lines:
-        mine = {(a.po_no, a.line_no) for a in app_lines}
-        for line in reconcile_pos(_bluetide_po_lines(result), app_lines, [], []).lines:
-            if (line.po_no, line.line_no) in mine and line.flags:
-                conflicts.append(f"{line.po_no} line {line.line_no}: {'; '.join(line.flags)}")
-    orders = {(x.order_no, x.item_code): x.status for x in result.dataset.sales}
-    for sh, line in db.execute(
-        select(m.Shipment, m.ShipmentLine).join(m.ShipmentLine, m.ShipmentLine.shipment_id == m.Shipment.id)
-    ).all():
-        if sh.status == "open" and orders.get((sh.order_no, line.item_code)) == "INVOICED":
-            conflicts.append(
-                f"Order {sh.order_no}: the new files show it invoiced (shipped) while it's open here"
-            )
-
-    known = {i.item_code for i in result.dataset.items} | set(db.scalars(select(m.AppItem.item_code)).all())
-    used = (
-        set(db.scalars(select(m.PurchaseOrderLineApp.item_code)).all())
-        | set(db.scalars(select(m.ShipmentLine.item_code)).all())
-        | set(db.scalars(select(m.StockMovement.item_code)).all())
-        | set(db.scalars(select(m.HandledFlag.item_code).where(m.HandledFlag.cleared_at.is_(None))).all())
-    )
-    orphans = sorted(used - known)
-    orphan_notes = (
-        [
-            f"Your records mention items the new files don't have: {', '.join(orphans)}. "
-            "Add them on the Items page."
-        ]
-        if orphans
-        else []
-    )
-    return conflicts, orphan_notes
+def _notes_on_dropped_items(db: Session, result: LoadResult) -> list[str]:
+    """Dana's open handled notes on items the new files no longer have (her note would point nowhere)."""
+    known = {i.item_code for i in result.dataset.items}
+    noted = set(db.scalars(select(m.HandledFlag.item_code).where(m.HandledFlag.cleared_at.is_(None))).all())
+    dropped = sorted(noted - known)
+    if not dropped:
+        return []
+    return [f"Your handled notes mention items the new files don't have: {', '.join(dropped)}."]
 
 
 def _current_counts(db: Session) -> dict[str, int]:
@@ -420,7 +344,7 @@ def _check_bluetide(db: Session, rules: BusinessRules, up: m.Upload) -> dict[str
             for k, v in sorted(by_trap.items())
         ],
     }
-    report["conflicts"], report["orphans"] = _effect_on_danas_records(db, result)
+    report["warnings"].extend(_notes_on_dropped_items(db, result))
     return report
 
 
@@ -433,9 +357,7 @@ def check(db: Session, rules: BusinessRules, upload_id: int) -> s.ImportOut:
     if not has_files:
         raise AppError(422, "no_files", "Upload at least one file first.")
     try:
-        report = (
-            _check_bluetide(db, rules, up) if up.kind == "bluetide" else template_import.check(db, rules, up)
-        )
+        report = _check_bluetide(db, rules, up)
     except RawFileError as error:
         raise AppError(422, "wrong_file", str(error)) from error
     up.report = report
@@ -462,17 +384,6 @@ def load(db: Session, rules: BusinessRules, upload_id: int, confirm_code: str) -
         raise AppError(409, "not_checked", "Check the files first (and fix anything that blocks the load).")
     if not secrets.compare_digest(confirm_code, up.confirm_code):
         raise AppError(422, "wrong_code", "That confirmation code doesn't match this import's check.")
-    if up.kind == "template":
-        summary = template_import.load(db, rules, up)
-        up.status, up.confirm_code = "loaded", None
-        up.report = {**(up.report or {}), "loaded": summary}
-        _touch(up)
-        record_change(
-            db, action="import.load", entity_type="import", entity_id=str(up.id), before=None, after=summary
-        )
-        db.commit()
-        return _out(db, up)
-
     _fail_stale_runs(db)
     raw, _, texts, blockers = _assemble(db, up)
     if blockers or not texts:

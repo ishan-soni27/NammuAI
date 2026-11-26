@@ -5,11 +5,9 @@ GET    /items                       every item with its status (the "show everyt
 GET    /items/{item_code}           the full "why" for one item ("shr-1620 " finds SHR-1620)
 POST   /items/{item_code}/handled   "I've handled this" (optional qty + arrival date + note)
 DELETE /handled/{note_id}           clear a handled note (optional reason)
-PATCH  /items/{item_code}/settings  revive an item / change its cushion
-GET    /item-details                every item's details (name, category, unit, pounds per case,
-                                    supplier) and where they come from: BlueTide, Dana, or both
-POST   /items                       add an item BlueTide doesn't have (Phase 6)
-PATCH  /items/{item_code}/details   change an item's details; for a BlueTide item, Dana's copy wins
+PATCH  /items/{item_code}/settings  revive an item / change its cushion / cases per pallet
+
+Items come from BlueTide's uploads only (ADR-032); Dana adds what BlueTide doesn't know.
 
 Every write records an audit row in the same transaction (services/audit.py). Business dates are
 checked against AS_OF, never the clock.
@@ -28,7 +26,7 @@ from app.db import models as m
 from app.db.session import get_db
 from app.db.sql import utc_now
 from app.errors import AppError
-from app.services import harbor_service, planning_service, presenters, records_service
+from app.services import harbor_service, planning_service, presenters
 from app.services.audit import current_actor, record_change
 
 router = APIRouter(tags=["Monday screen and items"])
@@ -193,22 +191,3 @@ def update_item_settings(
 
 def _setting_dict(setting: m.ItemSetting) -> dict:
     return harbor_service.item_setting_dict(setting)
-
-
-@router.get("/item-details", response_model=list[s.AppItemOut])
-def list_item_details(db: Session = Depends(get_db)) -> list[s.AppItemOut]:
-    return records_service.all_item_details(db)
-
-
-@router.post("/items", response_model=s.AppItemOut, status_code=201)
-def create_item(body: s.ItemCreateIn, db: Session = Depends(get_db)) -> s.AppItemOut:
-    """A new item. Case items need pounds per case (to compare items in the same category)."""
-    return records_service.create_item(db, body)
-
-
-@router.patch("/items/{item_code}/details", response_model=s.AppItemOut)
-def update_item_details(
-    item_code: str, body: s.ItemDetailsPatchIn, db: Session = Depends(get_db)
-) -> s.AppItemOut:
-    code = planning_service.resolve_item_code(db, item_code)
-    return records_service.update_item_details(db, code, body)

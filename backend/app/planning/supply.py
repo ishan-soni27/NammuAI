@@ -148,12 +148,13 @@ def po_arrival(
     bluetide = line.expected_date_system
     real = line.order_date + timedelta(days=lead_time_days)
     candidate = max(bluetide, real) if bluetide else real
-    flags: list[str] = list(line.flags)
+    flags: list[str] = []
     if bluetide is not None and bluetide < as_of:
         flags.append("BlueTide date has passed")
     if bluetide is not None and candidate > bluetide:
         flags.append("BlueTide date is earlier than the real lead time allows")
-    reference = f"{'Your PO ' if line.source == 'app' else ''}{line.po_no} line {line.line_no}"
+    reference = f"{line.po_no} line {line.line_no}"
+    po = {"po_no": line.po_no, "line_no": line.line_no}
 
     if override is not None:
         return IncomingLine(
@@ -165,12 +166,21 @@ def po_arrival(
             bluetide,
             False,
             tuple(flags),
+            **po,
         )
     if candidate <= as_of:  # A18: should already be here, nothing received
         flags.append("Late: confirm with vendor")
         if rules.late_po_assumed_days is None:  # Dana Q3: don't assume an arrival date
             return IncomingLine(
-                "po", reference, line.qty_remaining, None, "Late: date unknown", bluetide, True, tuple(flags)
+                "po",
+                reference,
+                line.qty_remaining,
+                None,
+                "Late: date unknown",
+                bluetide,
+                True,
+                tuple(flags),
+                **po,
             )
         eta = as_of + timedelta(days=rules.late_po_assumed_days)
         return IncomingLine(
@@ -182,9 +192,12 @@ def po_arrival(
             bluetide,
             True,
             tuple(flags),
+            **po,
         )
     source = "BlueTide date" if bluetide is not None and candidate == bluetide else "Real lead time"
-    return IncomingLine("po", reference, line.qty_remaining, candidate, source, bluetide, False, tuple(flags))
+    return IncomingLine(
+        "po", reference, line.qty_remaining, candidate, source, bluetide, False, tuple(flags), **po
+    )
 
 
 def incoming_for_item(

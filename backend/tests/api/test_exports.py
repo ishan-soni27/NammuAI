@@ -41,34 +41,25 @@ def test_stuck_list_has_one_row_per_lot_with_value_at_cost(api: TestClient) -> N
     assert sal[0]["at_harbor"] == "yes"  # Harbor lots first
 
 
-def test_purchase_orders_include_dana_and_bluetide_lines(api: TestClient) -> None:
-    api.post(
-        f"{V}/purchase-orders", json={"vendor_code": "BXE", "lines": [{"item_code": "SHR-1620", "qty": 40}]}
-    )
+def test_purchase_orders_are_bluetides_open_lines_with_our_date_and_the_late_flag(api: TestClient) -> None:
     rows, _ = _rows(api, "purchase-orders")
-    mine = next(r for r in rows if r["po_no"] == "KB-00001")
-    assert mine["from"] == "You" and mine["still_to_come"] == "40" and mine["arrives"] == "2027-02-08"
-    assert next(r for r in rows if r["po_no"] == "PO-260394")["line_status"] == "Late"
+    assert len(rows) == len(api.get(f"{V}/purchase-orders").json())
+    shr = next(r for r in rows if r["po_no"] == "PO-260443")
+    assert (shr["still_to_come"], shr["arrives"], shr["bluetide_date"], shr["late"]) == (
+        "600",
+        "2027-01-25",
+        "2026-12-28",
+        "no",
+    )
+    late = next(r for r in rows if r["po_no"] == "PO-260394")
+    assert late["late"] == "yes" and late["arrives"] == "" and late["unit"] == "cases"
 
 
-def test_shipments_and_data_notes(api: TestClient) -> None:
-    code = next(
-        c["customer_code"] for c in api.get(f"{V}/customers").json() if c["name"] == "Seabright Markets"
-    )
-    api.post(
-        f"{V}/shipments",
-        json={"customer_code": code, "location_code": "NB", "lines": [{"item_code": "SHR-1620", "qty": 5}]},
-    )
-    rows, _ = _rows(api, "shipments")
-    assert (
-        rows
-        and rows[0]["order_no"] == "SH-00001"
-        and rows[0]["status"] == "Open"
-        and rows[0]["unit"] == "cases"
-    )
+def test_data_notes_and_no_shipments_download(api: TestClient) -> None:
     notes, _ = _rows(api, "data-notes")
     assert len(notes) == api.get(f"{V}/data-issues/summary").json()["total"]
     assert {"file", "line", "problem", "what_we_did"} <= set(notes[0])
+    assert api.get(f"{V}/exports/shipments.csv").status_code == 404  # cut (ADR-032)
 
 
 def test_unknown_export_is_a_plain_404(api: TestClient) -> None:

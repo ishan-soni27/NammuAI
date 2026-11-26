@@ -27,7 +27,7 @@ from app.planning.calendar import add_months
 from app.planning.engine import plan
 from app.planning.stuck import TAG_ORDER, lot_tags
 from app.planning.supply import lot_status
-from app.planning.types import LocationInput, PlanResult, Scenario
+from app.planning.types import LocationInput, LotInput, PlanResult, Scenario
 from app.services import presenters
 from app.services.planning_inputs import LoadInfo, PlanningContext, build_context
 
@@ -75,13 +75,6 @@ def handled_notes_by_item(session: Session, rules: BusinessRules) -> dict[str, s
         )
     ).all():
         newer_pos.setdefault(po.item_code, []).append(po.po_no)
-    # Dana's own POs count too: a note and a PO for the same order would otherwise both be counted.
-    for po_no, item_code in session.execute(
-        select(m.PurchaseOrder.po_no, m.PurchaseOrderLineApp.item_code)
-        .join(m.PurchaseOrderLineApp, m.PurchaseOrderLineApp.po_id == m.PurchaseOrder.id)
-        .where(m.PurchaseOrder.order_date >= rules.as_of_date)
-    ).all():
-        newer_pos.setdefault(item_code, []).append(po_no)
     return {f.item_code: presenters.handled_out(f, newer_pos.get(f.item_code)) for f in flags}
 
 
@@ -109,7 +102,7 @@ def all_items(session: Session, rules: BusinessRules) -> list[s.ItemCard]:
 def resolve_item_code(session: Session, raw: str) -> str:
     """Find an item by code, case- and space-insensitively, or by a recorded variant ("shr-1620 ", T02)."""
     code = canonical_code(raw)
-    if session.get(m.Item, code) is not None or session.get(m.AppItem, code) is not None:
+    if session.get(m.Item, code) is not None:
         return code
     alias = session.get(m.ItemAlias, raw)
     if alias is not None:
@@ -123,71 +116,53 @@ def _points(scenario: Scenario) -> list[s.PointOut]:
 
 def item_detail(session: Session, rules: BusinessRules, raw_code: str) -> s.ItemDetailOut:
     code = resolve_item_code(session, raw_code)
-    result, context = current_plan_and_context(session, rules)
+    result, _ = current_plan(session, rules)
     plan_ = next(p for p in result.items if p.item.item_code == code)
     handled = handled_notes_by_item(session, rules)
     as_of = result.as_of
     six_month_line = add_months(as_of, rules.six_month_line_months)
 
     locations = {loc.code: loc for loc in session.scalars(select(m.Location)).all()}
-    # The lots the plan counted (BlueTide's count, then Dana's receipts, picks and moves applied),
-    # with BlueTide's details (pack date, original unit) where the lot came from its count.
-    bluetide_rows: dict[tuple[str, str], m.InventoryLot] = {}
-    for row in session.scalars(
-        select(m.InventoryLot).where(m.InventoryLot.item_code == code).order_by(m.InventoryLot.id)
-    ).all():
-        bluetide_rows.setdefault((row.location_code, row.lot_no), row)
+    # BlueTide's lots for this item, as the latest upload has them (the plan counts the same rows).
+    lot_rows = sorted(
+        session.scalars(select(m.InventoryLot).where(m.InventoryLot.item_code == code)).all(),
+        key=lambda r: (r.expiry_date or date.max, r.lot_no),
+    )
     lots_out = []
-    records = [r for r in context.lot_records if r.lot.item_code == code]
-    for record in sorted(records, key=lambda r: (r.lot.expiry_date or date.max, r.lot.lot_no)):
-        lot_in = record.lot
-        if record.origin != "bluetide" and not lot_in.qty:
-            continue  # a lot Dana received or moved, now empty: nothing to show
-        loc = locations.get(lot_in.location_code)
+    for row in lot_rows:
+        loc = locations.get(row.location_code)
         loc_in = (
             LocationInput(loc.code, loc.is_sellable, loc.may_return_to_stock, loc.is_third_party_storage)
             if loc
             else None
         )
-        row = (
-            bluetide_rows.get((lot_in.location_code, lot_in.lot_no)) if record.origin == "bluetide" else None
-        )
-        original = float(row.qty_sell_uom) if row is not None and row.qty_sell_uom is not None else None
-        changed = row is not None and original is not None and abs((lot_in.qty or 0) - original) >= 0.5
+        qty = float(row.qty_sell_uom) if row.qty_sell_uom is not None else None
+        cost = float(row.unit_cost_sell_uom) if row.unit_cost_sell_uom is not None else None
+        lot_in = LotInput(code, row.location_code, row.lot_no, qty, row.expiry_date, row.is_adjustment, cost)
         counted, reason = lot_status(lot_in, loc_in, as_of, six_month_line)
-        if record.note:
-            reason = f"{reason} {record.note}."
-        if changed:
-            reason = (
-                f"{reason} Changed in the app (shipped or moved; BlueTide's count had {round(original):,})."
-            )
         tags = (
             lot_tags(lot_in, plan_.lifecycle_status, plan_.weeks_of_cover, loc_in, rules)
             if loc_in
             and loc_in.is_sellable
-            and lot_in.qty
-            and lot_in.qty > 0
-            and not lot_in.is_adjustment
+            and qty
+            and qty > 0
+            and not row.is_adjustment
             and plan_.lifecycle_status != "fresh_out_of_scope"
             else []
         )
-        qty = lot_in.qty
-        same_as_count = row is not None and not changed
         lots_out.append(
             s.LotOut(
-                lot_no=lot_in.lot_no,
-                location_code=lot_in.location_code,
-                location_name=loc.name if loc else lot_in.location_code,
+                lot_no=row.lot_no,
+                location_code=row.location_code,
+                location_name=loc.name if loc else row.location_code,
                 qty=qty,
-                qty_source=float(row.qty_source) if same_as_count and row is not None else (qty or 0.0),
-                uom_source=row.uom_source if same_as_count and row is not None else plan_.item.sell_uom,
-                pack_date=row.pack_date if row is not None else None,
-                expiry_date=lot_in.expiry_date,
-                received_date=row.received_date if row is not None else None,
-                unit_cost=lot_in.unit_cost,
-                value_at_cost=round(qty * lot_in.unit_cost, 2)
-                if qty is not None and lot_in.unit_cost is not None
-                else None,
+                qty_source=float(row.qty_source),
+                uom_source=row.uom_source,
+                pack_date=row.pack_date,
+                expiry_date=row.expiry_date,
+                received_date=row.received_date,
+                unit_cost=cost,
+                value_at_cost=round(qty * cost, 2) if qty is not None and cost is not None else None,
                 counted=counted,
                 reason=reason,
                 stuck_tags=sorted(tags, key=TAG_ORDER.index),
@@ -257,3 +232,37 @@ def item_detail(session: Session, rules: BusinessRules, raw_code: str) -> s.Item
             s.SeasonMarkerOut(label=label, start=start, end=end) for label, start, end in rules.season_markers
         ],
     )
+
+
+def on_the_way(session: Session, rules: BusinessRules, q: str | None = None) -> list[s.OnTheWayLineOut]:
+    """BlueTide's open PO lines as the plan counts them: dated ones (counted) and late ones (not).
+
+    The same lines as each item's "On the way" and Monday's "Late or unknown", so the numbers agree.
+    Late first (they need Dana's date), then by arrival date. `q` matches PO, item code, item name or
+    supplier, ignoring case.
+    """
+    result, _ = current_plan(session, rules)
+    needle = (q or "").strip().casefold()
+    out = []
+    for p in result.items:
+        for line in (*p.incoming, *p.late_incoming):
+            if line.source != "po" or line.po_no is None or line.line_no is None:
+                continue  # a handled note is Dana's own, not a BlueTide PO
+            row = s.OnTheWayLineOut(
+                po_no=line.po_no,
+                line_no=line.line_no,
+                item_code=p.item.item_code,
+                description=p.item.description,
+                sell_uom=p.item.sell_uom,
+                vendor_name=p.vendor_name,
+                qty=line.qty,
+                eta=line.eta,
+                eta_source=line.eta_source,
+                bluetide_date=line.bluetide_date,
+                is_late=line.is_late,
+                flags=list(line.flags),
+            )
+            haystack = f"{row.po_no} {row.item_code} {row.description} {row.vendor_name}".casefold()
+            if needle in haystack:
+                out.append(row)
+    return sorted(out, key=lambda r: (not r.is_late, r.eta or date.max, r.po_no, r.line_no))

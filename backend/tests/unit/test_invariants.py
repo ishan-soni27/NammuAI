@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from app.config.settings import BACKEND_DIR, REPO_ROOT
-from app.db.models import APP_LAYER, CLEAN_LAYER, LOGGING_LAYER, RAW_LAYER, Base
+from app.db.models import APP_LAYER, CLEAN_LAYER, DROPPED_IN_0006, LOGGING_LAYER, RAW_LAYER, Base
 from app.logging_setup import ContextFilter, configure_logging, redact_database_url, request_id_var
 
 # ---- Invariant #5: the loader can rebuild CLEAN tables without touching Dana's edits -------
@@ -41,8 +41,9 @@ def test_every_table_belongs_to_exactly_one_layer() -> None:
 
 
 def test_migrations_enable_rls_on_every_table() -> None:
-    # Each migration lists the tables it creates in ALL_TABLES and enables RLS on them. Together
-    # they must cover every model table (plus Alembic's own), or a new table is exposed.
+    # Each migration lists the tables it creates in ALL_TABLES and enables RLS on them (and a later
+    # one may DROP some). Together they must cover every model table (plus Alembic's own), or a new
+    # table is exposed.
     covered: set[str] = set()
     for path in sorted((BACKEND_DIR / "migrations" / "versions").glob("[0-9][0-9][0-9][0-9]_*.py")):
         spec = importlib.util.spec_from_file_location(f"migration_{path.stem}", path)
@@ -51,7 +52,29 @@ def test_migrations_enable_rls_on_every_table() -> None:
         spec.loader.exec_module(module)
         assert "ENABLE ROW LEVEL SECURITY" in path.read_text(), f"{path.name} enables no RLS"
         covered |= set(module.ALL_TABLES)
+        covered -= set(getattr(module, "DROPPED", ()))
     assert covered == set(Base.metadata.tables) | {"alembic_version"}
+
+
+def test_the_record_keeping_tables_stay_gone() -> None:
+    # ADR-032: BlueTide owns every fact; the app records no transactions. Migration 0006 dropped
+    # these, and no model may bring one back.
+    path = BACKEND_DIR / "migrations" / "versions" / "0006_bluetide_stays_the_record.py"
+    spec = importlib.util.spec_from_file_location("migration_0006_check", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert set(module.DROPPED) == set(DROPPED_IN_0006)
+    assert not set(DROPPED_IN_0006) & set(Base.metadata.tables)
+    assert set(APP_LAYER) == {
+        "vendor_settings",
+        "item_settings",
+        "po_eta_overrides",
+        "handled_flags",
+        "harbor_storage_rows",
+        "uploads",
+        "upload_files",
+    }
 
 
 # ---- Invariant #1: business logic never reads the system clock -------------------------

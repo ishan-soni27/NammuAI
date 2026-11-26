@@ -525,326 +525,35 @@ class ClientEventIn(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
-# ---- Dana's own records (Phase 6, ADR-026/027) ------------------------------------------------
+# ---- On the way (ADR-032) -------------------------------------------------------------------------
 
 
-class VendorCreateIn(BaseModel):
-    """A new supplier. The code is made from the name if left blank."""
+class OnTheWayLineOut(BaseModel):
+    """One open BlueTide PO line, as the plan counts it (the On the way page and its download)."""
 
-    vendor_code: str | None = Field(default=None, max_length=20)
-    name: str = Field(min_length=1, max_length=120)
-    country: str | None = Field(default=None, max_length=60)
-    lead_time_days: int
-    cushion_days: int
-    order_cycle_days: int | None = None
-    note: str | None = Field(default=None, max_length=500)
-
-
-class ItemCreateIn(BaseModel):
-    item_code: str = Field(min_length=1, max_length=30)
-    description: str = Field(min_length=1, max_length=120)
-    category: str = Field(min_length=1, max_length=60)
-    sell_uom: Literal["CS", "LB"]
-    lb_per_case: float | None = Field(default=None, gt=0)
-    vendor_code: str = Field(min_length=1, max_length=20)
-    status: Literal["active", "discontinued"] = "active"
-    note: str | None = Field(default=None, max_length=500)
-
-
-class ItemDetailsPatchIn(BaseModel):
-    """Only the fields sent change. Editing a BlueTide item stores Dana's version, which wins."""
-
-    description: str | None = Field(default=None, min_length=1, max_length=120)
-    category: str | None = Field(default=None, min_length=1, max_length=60)
-    sell_uom: Literal["CS", "LB"] | None = None
-    lb_per_case: float | None = Field(default=None, gt=0)
-    vendor_code: str | None = Field(default=None, min_length=1, max_length=20)
-    status: Literal["active", "discontinued"] | None = None
-    note: str | None = Field(default=None, max_length=500)
-
-
-class AppItemOut(BaseModel):
-    item_code: str
-    description: str
-    category: str
-    sell_uom: str
-    lb_per_case: float | None
-    vendor_code: str
-    status: str
-    source: Literal["app", "bluetide", "both"]
-    note: str | None
-    updated_at: datetime | None
-    updated_by: str | None
-
-
-class POLineIn(BaseModel):
-    item_code: str = Field(min_length=1, max_length=30)
-    qty: float = Field(gt=0, description="In the item's selling unit (cases or lb).")
-    unit_cost: float | None = Field(
-        default=None, ge=0, description="Per selling unit; blank uses the last cost."
-    )
-
-
-class POCreateIn(BaseModel):
-    vendor_code: str = Field(min_length=1, max_length=20)
-    po_no: str | None = Field(default=None, max_length=30, description="Blank: the next KB-number.")
-    order_date: date | None = Field(default=None, description="Blank: today (the business date).")
-    expected_date: date | None = Field(
-        default=None, description="Blank: order date + the supplier's lead time."
-    )
-    note: str | None = Field(default=None, max_length=500)
-    lines: list[POLineIn] = Field(min_length=1, max_length=50)
-    clear_handled_notes: bool = Field(
-        default=True,
-        description="Clear active 'handled' notes for these items, so they aren't counted twice.",
-    )
-
-
-class POShipIn(BaseModel):
-    shipped_on: date | None = None
-    container_no: str | None = Field(default=None, max_length=40)
-    eta: date | None = Field(
-        default=None, description="A new expected arrival date, if the supplier gave one."
-    )
-    note: str | None = Field(default=None, max_length=500)
-
-
-class POCancelIn(BaseModel):
-    reason: str | None = Field(default=None, max_length=500)
-
-
-class POReceiveIn(BaseModel):
-    qty: float = Field(gt=0, description="In the item's selling unit.")
-    location_code: str = Field(min_length=1, max_length=20)
-    lot_no: str = Field(min_length=1, max_length=40)
-    expiry_date: date
-    unit_cost: float | None = Field(default=None, ge=0)
-    received_on: date | None = Field(default=None, description="Blank: today (the business date).")
-    allow_over_receipt: bool = False
-    note: str | None = Field(default=None, max_length=500)
-
-
-class UndoIn(BaseModel):
-    reason: str | None = Field(default=None, max_length=500)
-
-
-class ReceiptOut(BaseModel):
-    movement_id: int
-    received_on: date
-    qty: float
-    location_code: str
-    location_name: str
-    lot_no: str
-    expiry_date: date | None
-    unit_cost: float | None
-    created_by: str
-    added_to_stock: bool
-    why_not: str | None
-
-
-class POLineOut(BaseModel):
     po_no: str
     line_no: int
     item_code: str
     description: str
     sell_uom: str
-    source: Literal["app", "bluetide", "both"]
-    ordered: float
-    received: float
-    remaining: float
-    status: Literal["open", "shipped", "received", "cancelled", "late"]
-    counted: bool
-    eta: date | None
-    eta_source: str | None
-    bluetide_date: date | None
-    shipped_on: date | None
-    container_no: str | None
-    cancel_reason: str | None
-    unit_cost: float | None
-    flags: list[str]
-    receipts: list[ReceiptOut]
-
-
-class POOut(BaseModel):
-    po_no: str
-    vendor_code: str
     vendor_name: str
-    order_date: date
-    source: Literal["app", "bluetide", "both"]
-    status: Literal["open", "shipped", "late", "partly_received", "received", "cancelled"]
-    expected_date: date | None
-    note: str | None
-    created_by: str | None
-    lines: list[POLineOut]
-
-
-class MovementOut(BaseModel):
-    id: int
-    movement_date: date
-    kind: str
-    item_code: str
-    location_code: str
-    lot_no: str
-    qty: float
-    reverses_id: int | None
-    created_by: str
-
-
-class LocationOut(BaseModel):
-    code: str
-    name: str
-    is_sellable: bool
-    may_return_to_stock: bool
-    is_third_party_storage: bool
-    can_receive: bool  # sellable, or a hold that may come back (never Damaged)
-
-
-# ---- Shipments and moving stock (Phase 6 step 2) ------------------------------------------------
-
-
-class CustomerOut(BaseModel):
-    customer_code: str
-    name: str
-    customer_type: str
-    source: Literal["app", "bluetide", "both"]
-
-
-class CustomerCreateIn(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
-    customer_code: str | None = Field(default=None, max_length=20)
-    customer_type: str = Field(min_length=1, max_length=30, description="RESTAURANT, GROCERY, ...")
-
-
-class ShipmentLineIn(BaseModel):
-    item_code: str = Field(min_length=1, max_length=30)
-    qty: float = Field(gt=0, description="In the item's selling unit (cases or lb).")
-    unit_price: float | None = Field(default=None, ge=0)
-
-
-class ShipmentCreateIn(BaseModel):
-    customer_code: str = Field(min_length=1, max_length=20)
-    order_no: str | None = Field(default=None, max_length=30, description="Blank: the next SH-number.")
-    kind: Literal["customer", "sample"] = "customer"
-    order_date: date | None = Field(default=None, description="Blank: today (the business date).")
-    ship_date: date | None = Field(default=None, description="When it's due to leave. Blank: today.")
-    location_code: str = Field(min_length=1, max_length=20, description="The building it ships from.")
-    note: str | None = Field(default=None, max_length=500)
-    lines: list[ShipmentLineIn] = Field(min_length=1, max_length=50)
-
-
-class PickOut(BaseModel):
-    line_no: int
-    item_code: str
-    location_code: str
-    location_name: str
-    lot_no: str
-    expiry_date: date | None
-    qty: float
-
-
-class PickIn(BaseModel):
-    line_no: int
-    lot_no: str = Field(min_length=1, max_length=40)
-    qty: float = Field(gt=0)
-
-
-class ShipIn(BaseModel):
-    shipped_on: date | None = Field(default=None, description="Blank: today (the business date).")
-    picks: list[PickIn] | None = Field(default=None, description="Blank: soonest to expire first.")
-
-
-class PickPlanOut(BaseModel):
-    """The lots that would be taken, soonest to expire first, and anything there isn't enough of."""
-
-    picks: list[PickOut]
-    short: dict[int, float]  # line_no -> what the building doesn't have
-
-
-class ShipmentLineOut(BaseModel):
-    line_no: int
-    item_code: str
-    description: str
-    sell_uom: str
-    qty: float
-    unit_price: float | None
-    promised: bool
-    taken_from_stock: bool
-    counts_as_demand: bool
+    qty: float = Field(description="Still to come, in the item's selling unit.")
+    eta: date | None = Field(description="Our arrival date. None = late: not counted until Dana sets one.")
+    eta_source: str = Field(
+        description='"Set by <name>", "Real lead time", "BlueTide date" or "Late: date unknown".'
+    )
+    bluetide_date: date | None
+    is_late: bool
     flags: list[str]
-    picks: list[PickOut]
 
 
-class ShipmentOut(BaseModel):
-    order_no: str
-    customer_code: str
-    customer_name: str
-    kind: Literal["customer", "sample"]
-    order_date: date
-    ship_date: date
-    location_code: str
-    location_name: str
-    status: Literal["open", "shipped", "cancelled"]
-    shipped_on: date | None
-    cancel_reason: str | None
-    note: str | None
-    created_by: str
-    lines: list[ShipmentLineOut]
-
-
-class CancelIn(BaseModel):
-    reason: str | None = Field(default=None, max_length=500)
-
-
-class MoveIn(BaseModel):
-    item_code: str = Field(min_length=1, max_length=30)
-    from_location: str = Field(min_length=1, max_length=20)
-    lot_no: str = Field(min_length=1, max_length=40)
-    to_location: str = Field(min_length=1, max_length=20)
-    qty: float = Field(gt=0)
-    moved_on: date | None = Field(default=None, description="Blank: today (the business date).")
-    note: str | None = Field(default=None, max_length=500)
-
-
-class StockLotOut(BaseModel):
-    """A lot as the plan counts it now (BlueTide's count with Dana's changes applied)."""
-
-    item_code: str
-    location_code: str
-    location_name: str
-    lot_no: str
-    qty: float
-    expiry_date: date | None
-    unit_cost: float | None
-    counted: bool
-    at_harbor: bool
-
-
-class StockChangeOut(BaseModel):
-    """One of Dana's stock changes for an item (receipt, pick, move, adjustment), newest first."""
-
-    id: int
-    movement_date: date
-    kind: str
-    location_code: str
-    lot_no: str
-    qty: float
-    po_no: str | None
-    order_no: str | None
-    note: str | None
-    created_by: str
-    undone: bool
-    is_undo: bool
-    can_undo: bool  # receipts and moves undo here; a shipment's picks undo with the order
-
-
-# ---- Imports (Phase 6 step 3) ---------------------------------------------------------------------
+# ---- Imports: BlueTide's files from the website (ADR-029) -----------------------------------------
 
 
 class ImportSlotOut(BaseModel):
     slot: str
     label: str
     expected_name: str
-    columns: list[str]  # template columns (empty for BlueTide files)
 
 
 class ImportFileOut(BaseModel):
@@ -856,7 +565,7 @@ class ImportFileOut(BaseModel):
 
 
 class ImportCreateIn(BaseModel):
-    kind: Literal["bluetide", "template"]
+    kind: Literal["bluetide"] = "bluetide"  # Dana's own templates were cut (ADR-032)
 
 
 class ImportLoadIn(BaseModel):
@@ -865,7 +574,7 @@ class ImportLoadIn(BaseModel):
 
 class ImportOut(BaseModel):
     id: int
-    kind: Literal["bluetide", "template"]
+    kind: Literal["bluetide"]
     status: Literal["open", "checked", "loaded", "failed", "discarded"]
     created_at: datetime
     created_by: str

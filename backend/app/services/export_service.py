@@ -1,7 +1,7 @@
 """Download to Excel (Phase 6 step 4; P0 #13): every list as a CSV Excel opens cleanly.
 
-Each export is built from the same service the screen uses (planning_service, records_service,
-shipments_service), so a download always matches what Dana sees. Excel-friendly on purpose:
+Each export is built from the same service the screen uses (planning_service, harbor_service), so a
+download always matches what Dana sees. Excel-friendly on purpose:
   - UTF-8 with a byte-order mark (Excel otherwise garbles "Austral Frío"),
   - dates as 2026-11-16 (Excel reads them as dates in any locale),
   - numbers without units, and the unit in its own column (so she can add them up),
@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from app.config.business_rules import BusinessRules
 from app.db import models as m
 from app.loader.report import TRAP_TITLES
-from app.services import harbor_service, planning_service, records_service, shipments_service
+from app.services import harbor_service, planning_service
 from app.services.planning_inputs import latest_load
 
 STATUS_WORDS = {
@@ -165,109 +165,38 @@ def stuck_list(db: Session, rules: BusinessRules) -> str:
     return _csv(header, rows)
 
 
-PO_STATUS_WORDS = {
-    "open": "Ordered",
-    "shipped": "Shipped",
-    "late": "Late",
-    "received": "Received",
-    "cancelled": "Cancelled",
-    "partly_received": "Partly received",
-}
-
-
 def purchase_orders(db: Session, rules: BusinessRules) -> str:
-    """Every PO line, BlueTide's and Dana's (who it came from is a column)."""
+    """BlueTide's open PO lines, as the On the way page shows them: our date, BlueTide's, and late."""
     header = [
         "po_no",
-        "supplier",
-        "order_date",
-        "po_status",
         "line",
+        "supplier",
         "item_code",
         "item",
-        "line_status",
-        "ordered",
-        "received",
         "still_to_come",
         "unit",
         "arrives",
         "arrival_set_by",
         "bluetide_date",
-        "unit_cost",
-        "container",
-        "from",
-        "notes",
-    ]
-    source = {"app": "You", "bluetide": "BlueTide", "both": "You and BlueTide"}
-    rows = (
-        [
-            po.po_no,
-            po.vendor_name,
-            po.order_date,
-            PO_STATUS_WORDS.get(po.status, po.status),
-            line.line_no,
-            line.item_code,
-            line.description,
-            PO_STATUS_WORDS.get(line.status, line.status),
-            line.ordered,
-            line.received,
-            line.remaining,
-            _unit(line.sell_uom),
-            line.eta,
-            line.eta_source,
-            line.bluetide_date,
-            line.unit_cost,
-            line.container_no,
-            source[line.source],
-            "; ".join(line.flags),
-        ]
-        for po in records_service.purchase_orders(db, rules, "all")
-        for line in po.lines
-    )
-    return _csv(header, rows)
-
-
-def shipments(db: Session, rules: BusinessRules) -> str:
-    """Every order line Dana logged, with the lots taken if shipped."""
-    header = [
-        "order_no",
-        "customer",
-        "kind",
-        "order_date",
-        "ship_date",
-        "building",
-        "status",
-        "shipped_on",
-        "line",
-        "item_code",
-        "item",
-        "quantity",
-        "unit",
-        "unit_price",
-        "lots_taken",
+        "late",
         "notes",
     ]
     rows = (
         [
-            sh.order_no,
-            sh.customer_name,
-            "Sample" if sh.kind == "sample" else "Customer order",
-            sh.order_date,
-            sh.ship_date,
-            sh.location_name,
-            sh.status.capitalize(),
-            sh.shipped_on,
-            line.line_no,
-            line.item_code,
-            line.description,
-            line.qty,
-            _unit(line.sell_uom),
-            line.unit_price,
-            "; ".join(f"{p.lot_no} {_cell(p.qty)}" for p in line.picks),
-            "; ".join(line.flags),
+            x.po_no,
+            x.line_no,
+            x.vendor_name,
+            x.item_code,
+            x.description,
+            x.qty,
+            _unit(x.sell_uom),
+            x.eta,
+            x.eta_source,
+            x.bluetide_date,
+            x.is_late,
+            "; ".join(x.flags),
         ]
-        for sh in shipments_service.shipments(db, rules, "all")
-        for line in sh.lines
+        for x in planning_service.on_the_way(db, rules)
     )
     return _csv(header, rows)
 
@@ -354,7 +283,6 @@ EXPORTS: dict[str, Callable[[Session, BusinessRules], str]] = {
     "order-list": order_list,
     "stuck-list": stuck_list,
     "purchase-orders": purchase_orders,
-    "shipments": shipments,
     "data-notes": data_notes,
     "harbor-storage": harbor_storage,
 }
