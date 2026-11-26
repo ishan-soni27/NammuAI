@@ -442,3 +442,51 @@ from the per-item cushion, not double counting.
 - Ishan's sentence ("count open customer orders in the selling rate") read as the opposite of the recommendation.
   Claude asked instead of guessing.
 **Follow-ups:** Phase 4 (API) is waiting for "go".
+
+## #19 | 2026-11-26 06:15 UTC | "go": Phase 4, the API
+**Prompt (simplified):** Go ahead with Phase 4.
+**What changed:**
+- **Endpoints** (`backend/app/api/v1/`; docs at /api/v1/docs):
+  - `items.py`: dashboard, items, drill-down, handled notes, item settings;
+  - `suppliers.py`: vendors, PO arrival dates;
+  - `activity.py`: data notes, audit log, events, load runs, settings, client events.
+- **Services:** `planning_inputs.inputs_from_db` (clean layer cached per load run, Dana's edits fresh),
+  `planning_service`, `presenters` (Monday-screen assembly + summary sentences), `audit` (audit row in the same
+  transaction; request_log; event_log).
+- **Middleware:** a request_log row after every response (worker thread, never failing the request); unhandled errors
+  go to event_log.
+- **Portability for tests (ADR-023):**
+  - JSON/BIGINT model variants;
+  - the writer uses COPY/TRUNCATE on Postgres, insert/DELETE elsewhere;
+  - `db/sql.utc_now()`;
+  - `db.session.use_engine`.
+- 17 API tests on a SQLite copy of the real data, loaded by the real writer.
+- `planning/supply.lot_status`; ItemPlan carries the vendor country; PO dates say "Set by <who>".
+- Docs: ADR-004 note, ADR-023, CLAUDE.md, PRIORITIES statuses.
+**Impact:**
+- **The API now serves everything the screens need.** 201 tests pass; ruff is clean.
+- `alembic check` against Supabase: no schema drift.
+- **Live smoke test on https://nammu-ai.vercel.app:**
+  - all 12 read endpoints return 200 with the same numbers as the tests;
+  - the summary reads "3 items will run out before a new order can arrive. 6 more need an order this week and 5 should
+    be ordered soon. 3 items would only be covered if a late PO shows up. $108,799 of stock is inside the six-month
+    line, $90,970 of it at Harbor. Not counted: 420 cs on hold, 20 cs damaged, 78 cs expired, 59 cs of old ZZ stock,
+    1,500 cs on late POs with no arrival date."
+- **Server time inside the API** (from request_log): dashboard ~220 ms average (137–542), drill-down ~165 ms, health
+  13–203 ms. The 1–2 s seen from this laptop is its slow link (connect + TLS alone 0.4–2 s).
+- **Live audited edit:** a PO date was set and cleared on PO-260394 (actor "Claude (smoke test)"). The item moved from
+  late to dated and back; both audit rows are present; a bad lead time got the plain-English 422.
+**Decisions made (and by whom):** Claude:
+- SQLite-based API tests (ADR-023) instead of skipping them;
+- an in-memory cache of BlueTide inputs per load run (ADR-004);
+- notes and PO dates in the past are rejected;
+- cushion follows the spec's 1–365 days;
+- docs moved to /api/v1/docs.
+**AI mistakes caught or corrected:**
+- `clock_timestamp()` doesn't exist in SQLite. Caught by the first SQLite load; added a portable `utc_now()`.
+- A circular import (audit ↔ middleware) was avoided by moving DEFAULT_ACTOR into logging_setup.
+- A leftover placeholder function in items.py was removed.
+- The health GET+HEAD route produced a duplicate OpenAPI id. Split it.
+- **Claude's smoke-test script used `path` as a loop variable.** In zsh that overwrites PATH, so curl "wasn't found".
+- The live test showed PO dates labelled "Set by Dana" even when someone else set them. Now "Set by <who>".
+**Follow-ups:** Phase 5 (the screens) is waiting for "go". The two smoke-test audit rows stay in the log as an honest record.

@@ -9,7 +9,7 @@ Walt 00:04:40: "If I can't sell it, it isn't inventory." Dana's Q4: "until it do
 
 On the way = open PO lines + Dana's "I've handled this" notes that have a quantity and a date.
   candidate = max(BlueTide date, order date + real lead time)   (BlueTide dates are stale, T26)
-  - Dana typed a date            -> that date ("Set by Dana")
+  - Dana typed a date            -> that date ("Set by <who typed it>")
   - candidate ON OR BEFORE today -> LATE (A18). Not counted as coming (Dana's Q3 answer, 2026-11-26:
                                     "please don't assume they'll arrive within a week"). It goes to
                                     the late list, shown in its own section (P0 #2a), until she enters
@@ -157,7 +157,14 @@ def po_arrival(
 
     if override is not None:
         return IncomingLine(
-            "po", reference, line.qty_remaining, override.eta, "Set by Dana", bluetide, False, tuple(flags)
+            "po",
+            reference,
+            line.qty_remaining,
+            override.eta,
+            f"Set by {override.set_by}",
+            bluetide,
+            False,
+            tuple(flags),
         )
     if candidate <= as_of:  # A18: should already be here, nothing received
         flags.append("Late: confirm with vendor")

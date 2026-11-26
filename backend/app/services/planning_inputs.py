@@ -255,7 +255,7 @@ def inputs_from_db(session: Session, rules: BusinessRules) -> tuple[PlanningInpu
                 for s in session.scalars(select(m.ItemSetting)).all()
             ),
             eta_overrides=tuple(
-                EtaOverrideInput(o.po_no, o.line_no, o.eta)
+                EtaOverrideInput(o.po_no, o.line_no, o.eta, o.updated_by)
                 for o in session.scalars(select(m.PoEtaOverride)).all()
             ),
             handled_notes=tuple(

@@ -46,8 +46,10 @@ data/reference/*.csv         human-maintained seeds (pack sizes, lead times, loc
 backend/app/config/          settings.py (env), business_rules.py (ALL tunable numbers)
 backend/app/loader/          one-time CSV load: read_raw → rules (T01..T31) → normalize/classify/convert → write → report
 backend/app/planning/        PURE engine (no DB/clock/I/O): seasonality, demand, supply, projection, ordering, stuck, explain
-backend/app/services/        DB → engine inputs → DTOs; audit + event writers
-backend/app/api/v1/          FastAPI routers + Pydantic schemas (prefix /api/v1, OpenAPI at /docs)
+backend/app/services/        planning_inputs (DB → engine inputs, cached per load), planning_service, presenters (→ DTOs),
+                             audit (audit rows in the same transaction, request_log, event_log)
+backend/app/api/v1/          routers: health, items (dashboard/drill-down/handled/settings), suppliers (vendors, PO dates),
+                             activity (data notes, audit, events, load runs, settings); schemas.py; docs at /api/v1/docs
 backend/tests/               unit/ (per trap), golden/ (real data, G01–G17), api/
 frontend/src/                api/ pages/ components/ lib/ styles/
 scripts/                     profile_data.py (independent fact check), compare_answer_key.py (engine vs §7), set_database_password.py
@@ -63,8 +65,8 @@ python3 ../scripts/set_database_password.py   # puts the password in safely (hid
 alembic upgrade head                # create/upgrade tables (RLS on every table)
 python -m app.loader.run            # load BlueTide CSVs (~2 min from a laptop; safe to re-run; writes docs/DATA_LOAD_REPORT.md)
 python -m app.loader.run --dry-run  # run every rule + write the report, touch no database
-uvicorn app.main:app --reload       # http://localhost:8000/docs
-pytest                              # all tests (never touches the real DB; see tests/conftest.py; config in pytest.ini)
+uvicorn app.main:app --reload       # API docs: http://localhost:8000/api/v1/docs
+pytest                              # all tests; never touches the real DB (API tests use a SQLite copy of the real data, ADR-023)
 ruff check . && ruff format --check .
 
 # Frontend (Node >= 22.12)

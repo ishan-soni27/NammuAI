@@ -116,6 +116,7 @@ class EtaOverrideInput:
     po_no: str
     line_no: int
     eta: date
+    set_by: str = "Dana"  # who typed it (shown as "Set by ...")
 
 
 @dataclass(frozen=True)

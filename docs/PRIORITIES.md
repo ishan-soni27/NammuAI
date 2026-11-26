@@ -9,14 +9,14 @@ The working copy of BUILD_PROMPT §11 (P0 / P1 / P2), kept up to date as Ishan a
 | # | Item | Phase | Status |
 |---|---|---|---|
 | 1 | Correct numbers: all T01–T31 rules, golden facts, visible data notes | 2 | ✅ Loader done (load run #5) |
-| 2 | Run-out projection: sellable stock − promised orders + incoming POs with corrected dates − seasonal demand; statuses, "order at least", shortfall | 3 | In progress |
+| 2 | Run-out projection: sellable stock − promised orders + incoming POs with corrected dates − seasonal demand; statuses, "order at least", shortfall | 3, 4 | Done (engine + /dashboard) |
 | 2a | **Late / unknown inventory section** (Ishan, 2026-11-26; Dana's Q3 + Q4): stock that might still come but can't be counted on is shown in its own bucket, never mixed into current inventory. Late POs ("ordered, arrival date unknown") and QA-HOLD ("may come back") go here. The run-out status counts only confirmed supply. A second "if the late PO arrives" line shows whether the item would be covered, and flags items **only covered by a late PO**. | 3 (engine), 5 (UI) | In progress |
 | 3 | Monday screen: both answers, urgency-sorted, one-sentence summary, trust strip | 5 | — |
-| 4 | Item drill-down "why" | 3 (explain), 5 (UI) | In progress |
-| 5 | Stuck list: expired, stopped selling, inside six-month line, long at Harbor, overstock, $ at cost. Stopped items' Harbor stock flagged so Dana can clear it (her Q5) | 3, 5 | In progress |
-| 6 | "I've handled this" with optional qty and arrival date | 3 (engine), 4, 5 | — |
-| 7 | Tell it what it knows: editable lead times, cushion, PO arrival dates | 4, 5 | — |
-| 8 | Log everything (4 layers) + Data notes and Activity pages | 4, 5 | Layers 1, 2, 4 done; 3 (audit) in Phase 4 |
+| 4 | Item drill-down "why" | 3 (explain), 4 (API), 5 (UI) | Engine + API done; UI in Phase 5 |
+| 5 | Stuck list: expired, stopped selling, inside six-month line, long at Harbor, overstock, $ at cost. Stopped items' Harbor stock flagged so Dana can clear it (her Q5) | 3, 4, 5 | Engine + API done; UI in Phase 5 |
+| 6 | "I've handled this" with optional qty and arrival date | 3 (engine), 4, 5 | Engine + API done; UI in Phase 5 |
+| 7 | Tell it what it knows: editable lead times, cushion, PO arrival dates | 4, 5 | API done (audited); UI in Phase 5 |
+| 8 | Log everything (4 layers) + Data notes and Activity pages | 4, 5 | All 4 layers live; pages in Phase 5 |
 | 9 | Ship it: live deploy, loader, tests, README, DECISIONS, ASSUMPTIONS, DEMO_SCRIPT | 1–6 | Deploy live |
 
 ## P1: after P0, in this order

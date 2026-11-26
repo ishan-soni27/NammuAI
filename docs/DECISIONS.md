@@ -81,7 +81,10 @@ is trivial at this size. _Full write-up to come (§8.3)._
 
 ## ADR-004 Pure planning engine, computed on request
 **Decision:** `planning/` takes dataclasses and returns dataclasses (no DB, clock or I/O) and runs per request. That takes
-milliseconds for about 30 items × 182 days. At thousands of items, move to a nightly precompute into `plan_results`. _Full write-up to come (§8.4)._
+milliseconds for about 30 items × 182 days. At thousands of items, move to a nightly precompute into `plan_results`.
+**Implemented 2026-11-26 (Phase 4):** `services/planning_inputs.inputs_from_db`. The BlueTide (clean-layer) inputs are cached in
+memory per latest load run id (they only change when the loader runs). Dana's app-layer edits are read fresh on every request,
+so an edit shows up immediately. The dashboard takes about 50 ms warm on the test database. _Full write-up to come (§8.4)._
 
 ## ADR-005 Forecast = recent level × category monthly seasonality
 **Decision:** It mirrors Dana's mental model ("October is slow, December won't be"), and it is robust to censored demand and
@@ -275,4 +278,28 @@ nature. "Order at least" and shortfalls are rounded **up** with a 1e-9 tolerance
 
 **Tradeoffs.** No exact-decimal guarantees inside forecasts, which is irrelevant at this precision. Tests compare with
 `pytest.approx`.
+
+## ADR-023 API tests run on SQLite with the real loader writer; the code stays Postgres-first
+**Date:** 2026-11-26 · **Decided by:** Claude (Phase 4), flagged to Ishan
+
+**Context.** BUILD_PROMPT §14 asks for API tests "against DATABASE_URL_TEST if set, otherwise skip". There's no local
+Postgres (no Docker daemon), and tests must never touch Supabase, so every API test would have been skipped. That would
+leave the most change-prone code (endpoints, audit, validation) untested before the live-change session.
+
+**Decision.**
+- The models declare `JSON().with_variant(JSONB, "postgresql")` and `BigInteger().with_variant(Integer, "sqlite")`.
+  Postgres DDL is byte-for-byte the same, and `alembic check` against Supabase reports no drift.
+- The loader writer uses COPY / TRUNCATE / `SET LOCAL statement_timeout` on Postgres, and plain inserts / DELETE elsewhere.
+- `db/sql.utc_now()` compiles to `clock_timestamp()` on Postgres and `CURRENT_TIMESTAMP` on SQLite.
+- The test suite loads the **real** exports into an in-memory SQLite template with the **real** writer, once. Each test
+  gets a fresh copy (sqlite3 backup) via `db.session.use_engine`.
+
+**Alternatives.** (a) Skip API tests without a test Postgres: no coverage. (b) A Supabase test project: network-slow and
+shared state. (c) Mock the repository layer: wouldn't test the SQL.
+
+**Tradeoffs.** SQLite isn't Postgres: no JSONB operators, different timestamp storage, no COPY. The code avoids
+dialect-specific SQL outside `write.py` and `db/sql.py`. Postgres-only paths are still covered by real loads (run #5) and
+the live smoke test.
+
+**Revisit when.** A CI Postgres service is available: run the same suite against it via `DATABASE_URL_TEST`.
 
