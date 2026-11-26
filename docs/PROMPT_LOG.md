@@ -1429,3 +1429,18 @@ He asked two questions in the plan: (a) the instruction's wording; (b) the reten
   now assert the rows and the instruction. That was expected, but it's noted here because it's where a silent
   regression would have hidden.
 **Follow-ups:** step 5 (docs, deploy, log) when Ishan says go. **Ishan:** still check Vercel for `AS_OF_DATE`.
+
+## #37 | 2026-11-26 21:12 UTC | "what do u need me to check and where on vercel"
+**Prompt (simplified):** What exactly should Ishan check on Vercel, and where?
+**What changed:** nothing (an answer).
+**Impact:**
+- Ishan checks Vercel → the project → Settings → Environment Variables for `AS_OF_DATE`, in every environment
+  (Production, Preview, Development).
+- If it's there, delete it and redeploy, because env changes apply only to new deployments.
+- Why: since step 3 "today" follows the data (the latest stock count + 1 day), and `AS_OF_DATE` is an override that
+  would freeze it. Live shows Nov 16 either way today, so it can't be told from outside.
+- Expected variables: `DATABASE_URL` (the transaction pooler, port 6543) and `APP_ENV=production`; nothing else is
+  needed.
+**Decisions made (and by whom):** none yet (Ishan to check).
+**AI mistakes caught or corrected:** none.
+**Follow-ups:** step 5 when Ishan says go.
