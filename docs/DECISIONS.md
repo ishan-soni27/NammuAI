@@ -360,6 +360,11 @@ signal-flag palette (brown for "order this week", blue for "order soon", a diffe
 
 **Supersedes.** BUILD_PROMPT §9.1's status and tag colours; ADR-024 is otherwise unchanged.
 
+**Update (Ishan, 2026-11-26, prompt #28).** What to order, Handled and Fine are now a **grid of cards** (one column
+on phones, two from 640 px), not a list: status, code, name, key date, the runway bar and how much to order. A
+clicked card opens across the full row (`open:col-span-full`) and the cards after it fill in (`grid-flow-dense`).
+The stuck list stays a list (it is grouped by problem with money on each row).
+
 ## ADR-026 Direction: the app becomes the main record for POs and shipments
 **Date:** 2026-11-26 · **Decided by:** Ishan · **Status:** direction decided; the design (Phase 6) is waiting for "go"
 

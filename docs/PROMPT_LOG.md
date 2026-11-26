@@ -805,3 +805,39 @@ own independent system, where Dana uploads her own information and the system ca
   - buildings come from a load;
   - new sales don't move the selling rate until "today" moves;
   - partial shipments.
+
+## #28 | 2026-11-26 15:20 UTC | "the definitions cover the text when I click an item ... make What to Order a grid"
+**Prompt (simplified):** Step 3 can wait. Clicking an item in "What to order" shows every word's definition at once,
+covering the text. They should only show when you hover the word itself. Also make the What to order items a grid,
+not a list, so it looks better.
+**What changed:**
+- **Bubble fix** (`components/Term.tsx`): the bubbles used Tailwind's plain `group`, which also matched the item's
+  dropdown (`<details className="group">`). So opening or hovering an item opened every bubble inside it. They now
+  use a named group (`group/term`) and open only on their own word's hover or keyboard focus.
+- **Grid of cards** (`components/OrderRow.tsx`, `MondayPage.tsx`):
+  - What to order, Handled and Fine are cards, one column on phones and two from 640 px;
+  - each card shows the status, code, name, key date, the bar and how much to order;
+  - a clicked card opens across the row and the cards after it fill in.
+- **Duplicate names refused:** a supplier or customer with the same name as an existing one is now refused (409).
+  Re-running a test had silently created GFC2 and GFC3.
+- ADR-025 updated.
+**Impact:**
+- **Browser check (local and live):**
+  - after opening a card and moving the mouse over it, no bubbles are visible;
+  - hovering "cushion" shows exactly one bubble ("Cushion means extra stock for when ships slip.");
+  - an opened card spans the full row;
+  - every page at 1280 px and 375 px has no errors and no sideways scrolling.
+- 270 backend tests pass (2 new); the frontend build, lint and format are clean; the Monday, PO and shipment
+  click-throughs pass locally.
+**Decisions made (and by whom):**
+- Ishan: show the bubbles only on hover, and lay out the items as a grid.
+- Claude: two columns inside the What to order half of the page (the stuck list stays beside it); an opened card
+  takes the full row; the stuck list stays a list; duplicate names are refused.
+**AI mistakes caught or corrected:**
+- **Claude's own bug.** The step-1 bubble fix (`pointer-events-none`) didn't catch the shared `group` class, so this
+  shipped to live until Ishan saw it.
+- **The first card version spilled its opened details under the next cards** (the header was set to fill the card's
+  height). Caught in the screenshot before committing.
+- The PO click-through stopped on re-run because its test item already existed in the preview database (test data,
+  not an app bug). It also showed duplicate supplier names were allowed; fixed.
+**Follow-ups:** Step 6.3 (Import) waits until Ishan says go.
