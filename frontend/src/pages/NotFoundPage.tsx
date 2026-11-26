@@ -5,7 +5,7 @@ export function NotFoundPage() {
   return (
     <div>
       <h1 className="text-xl font-bold">We couldn't find that page.</h1>
-      <Link to="/" className="mt-3 inline-block font-semibold text-soon underline">
+      <Link to="/" className="mt-3 inline-block font-semibold text-ink underline">
         Go to the Monday screen
       </Link>
     </div>

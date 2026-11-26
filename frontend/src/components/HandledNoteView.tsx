@@ -19,7 +19,7 @@ export function HandledNoteView({ note, uom }: { note: HandledNote; uom: string 
     .join(", ");
 
   return (
-    <div className="rounded-md bg-handled-tint px-3 py-2 text-ink">
+    <div className="rounded-md bg-grey-tint px-3 py-2 text-ink">
       <p>
         <span className="font-semibold">
           {note.created_by} marked this handled on {formatTimestamp(note.created_at)}

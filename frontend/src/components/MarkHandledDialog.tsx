@@ -7,6 +7,7 @@
 import { useState, type FormEvent } from "react";
 import { useMarkHandled } from "../api/queries";
 import type { ItemCard } from "../api/types";
+import { unitWord } from "../lib/format";
 import { itemName } from "../lib/names";
 import { Dialog } from "./Dialog";
 
@@ -22,7 +23,7 @@ export function MarkHandledDialog({ card, asOf, open, onClose }: Props) {
   const [qty, setQty] = useState("");
   const [eta, setEta] = useState("");
   const [note, setNote] = useState("");
-  const unit = card.sell_uom.toLowerCase();
+  const unit = unitWord(card.sell_uom);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();

@@ -2,24 +2,24 @@
  * The Monday screen (BUILD_PROMPT §9.2): Dana's two questions on one page.
  *   1. What will run out before a new order can arrive?  ("What to order")
  *   2. What is she stuck with?                            ("What you're stuck with")
- * Top: the summary sentences and what isn't counted (links to Data notes).
- * Below the order list: Handled, Late or unknown (late POs and on-hold stock, never counted;
- * ADR-021), and everything that looks fine. Two columns from 1024 px; one column on phones,
- * order list first.
+ * Top: the headline sentence and the counts in traffic-light colours. Each item is a dropdown row
+ * (name, bar, status), so the whole list fits on one screen (Ishan, 2026-11-26). Below the order list:
+ * Handled, Late or unknown (late POs and on-hold stock, never counted; ADR-021) and Everything else
+ * looks fine, each closed until clicked. Two columns from 1024 px; one column on phones.
  * Fed by: GET /dashboard.
  */
 import { Link } from "react-router";
 import { useDashboard } from "../api/queries";
-import type { Dashboard, ItemCard } from "../api/types";
+import type { Dashboard } from "../api/types";
 import { Disclosure } from "../components/Disclosure";
-import { OrderCard } from "../components/OrderCard";
+import { OrderRow } from "../components/OrderRow";
 import { QueryState } from "../components/QueryState";
+import { RunwayLegend } from "../components/RunwayBar";
 import { SetPoDate } from "../components/SetPoDate";
-import { StatusChip } from "../components/StatusChip";
 import { StuckList } from "../components/StuckList";
 import { Term } from "../components/Term";
 import { formatShortDate, formatTimestamp } from "../lib/dates";
-import { dayWithRelative, qty } from "../lib/format";
+import { money, qty } from "../lib/format";
 import { itemName } from "../lib/names";
 
 function itemLink(code: string, description: string) {
@@ -31,23 +31,30 @@ function itemLink(code: string, description: string) {
   );
 }
 
-function FineRow({ card, asOf }: { card: ItemCard; asOf: string }) {
-  const detail =
-    card.status === "NO_RECENT_SALES"
-      ? "No recent sales and nothing promised."
-      : card.run_out_date
-        ? `Runs out about ${dayWithRelative(card.run_out_date, asOf)}.`
-        : card.weeks_of_cover !== null
-          ? `About ${Math.round(card.weeks_of_cover)} weeks of stock.`
-          : "";
+const TONE = {
+  red: "border-red bg-red-tint text-red",
+  yellow: "border-yellow bg-yellow-tint text-ink",
+  green: "border-green bg-green-tint text-green",
+} as const;
+
+function Count({
+  tone,
+  value,
+  label,
+  wide = false,
+}: {
+  tone: keyof typeof TONE;
+  value: string;
+  label: string;
+  wide?: boolean;
+}) {
   return (
-    <li className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-2">
-      <span>{itemLink(card.item_code, card.description)}</span>
-      <span className="flex items-center gap-2 text-sm text-fog">
-        {detail}
-        <StatusChip status={card.status} />
-      </span>
-    </li>
+    <div
+      className={`rounded-md border-l-4 px-3 py-2 ${TONE[tone]} ${wide ? "col-span-2 sm:col-span-1" : ""}`}
+    >
+      <p className="text-2xl font-bold leading-tight">{value}</p>
+      <p className="text-sm font-semibold text-ink">{label}</p>
+    </div>
   );
 }
 
@@ -56,8 +63,8 @@ function LateOrUnknown({ data }: { data: Dashboard }) {
   return (
     <div className="space-y-4">
       <p className="text-fog">
-        None of this is counted as stock or as coming. Set a real arrival date once the vendor gives
-        you one.
+        None of this is counted as stock or as coming. Set a real arrival date once the supplier
+        gives you one.
       </p>
       <section>
         <h3 className="font-semibold">
@@ -107,47 +114,76 @@ function LateOrUnknown({ data }: { data: Dashboard }) {
 }
 
 function Monday({ data }: { data: Dashboard }) {
+  const s = data.summary;
   const lateCount = data.late_inventory.late_pos.length + data.late_inventory.on_hold.length;
+  const [headline, ...details] = s.sentences;
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <section aria-label="Summary" className="rounded-lg border border-rope bg-hull px-5 py-4">
-        {data.summary.sentences.map((sentence, i) => (
-          <p key={sentence} className={i === 0 ? "text-xl font-bold" : "mt-1"}>
-            {sentence}
-          </p>
-        ))}
-        <p className="mt-2 text-sm text-fog">
-          <Link to="/data-notes" className="font-semibold text-soon underline underline-offset-2">
-            What we cleaned up and why
-          </Link>
-          {data.last_load_at && <> · BlueTide data loaded {formatTimestamp(data.last_load_at)}</>}
-        </p>
+        {headline && <p className="text-lg font-bold sm:text-xl">{headline}</p>}
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <Count tone="red" value={String(s.too_late)} label="Too late" />
+          <Count tone="yellow" value={String(s.order_this_week)} label="Order this week" />
+          <Count tone="yellow" value={String(s.order_soon)} label="Order soon" />
+          <Count tone="green" value={String(s.fine)} label="Fine" />
+          <Count
+            wide
+            tone="red"
+            value={money(s.inside_six_months_value)}
+            label="Inside the six-month line"
+          />
+        </div>
+        <details className="mt-3 text-sm text-fog">
+          <summary className="cursor-pointer">
+            What this doesn't count, and where the data came from
+          </summary>
+          <div className="mt-1 space-y-1">
+            {details.map((sentence) => (
+              <p key={sentence}>{sentence}</p>
+            ))}
+            <p>
+              <Link
+                to="/data-notes"
+                className="font-semibold text-ink underline underline-offset-2"
+              >
+                What we cleaned up and why
+              </Link>
+              {data.last_load_at && (
+                <> · BlueTide data loaded {formatTimestamp(data.last_load_at)}</>
+              )}
+            </p>
+          </div>
+        </details>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
-        <section aria-labelledby="order-heading" className="space-y-4">
-          <h2 id="order-heading" className="text-xl font-bold">
-            What to order
-          </h2>
-          {data.order_items.length === 0 ? (
-            <p className="rounded-lg border border-rope bg-hull px-4 py-4">
-              Nothing needs ordering right now.
-            </p>
-          ) : (
-            data.order_items.map((card) => (
-              <OrderCard key={card.item_code} card={card} asOf={data.as_of} />
-            ))
-          )}
+      <div className="grid items-start gap-5 lg:grid-cols-[3fr_2fr]">
+        <section aria-labelledby="order-heading" className="min-w-0 space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 id="order-heading" className="text-xl font-bold">
+              What to order
+            </h2>
+            <RunwayLegend />
+          </div>
+          <div className="divide-y divide-rope overflow-hidden rounded-lg border border-rope bg-hull">
+            {data.order_items.length === 0 ? (
+              <p className="px-4 py-3">Nothing needs ordering right now.</p>
+            ) : (
+              data.order_items.map((card) => (
+                <OrderRow key={card.item_code} card={card} asOf={data.as_of} />
+              ))
+            )}
+          </div>
 
           <Disclosure title={`Handled (${data.handled_items.length})`}>
             {data.handled_items.length === 0 ? (
               <p className="text-fog">
-                Nothing marked as handled. Use "Mark as handled" on an item once you've ordered it.
+                Nothing marked as handled. Open an item above and use "Mark as handled" once you've
+                ordered it.
               </p>
             ) : (
-              <div className="space-y-3">
+              <div className="-mx-4 -my-3 divide-y divide-rope">
                 {data.handled_items.map((card) => (
-                  <OrderCard key={card.item_code} card={card} asOf={data.as_of} />
+                  <OrderRow key={card.item_code} card={card} asOf={data.as_of} />
                 ))}
               </div>
             )}
@@ -158,19 +194,22 @@ function Monday({ data }: { data: Dashboard }) {
           </Disclosure>
 
           <Disclosure title={`Everything else looks fine (${data.fine_items.length} items)`}>
-            <ul className="divide-y divide-rope">
+            <div className="-mx-4 -my-3 divide-y divide-rope">
               {data.fine_items.map((card) => (
-                <FineRow key={card.item_code} card={card} asOf={data.as_of} />
+                <OrderRow key={card.item_code} card={card} asOf={data.as_of} />
               ))}
-            </ul>
+            </div>
           </Disclosure>
         </section>
 
-        <section aria-labelledby="stuck-heading" className="space-y-4">
-          <h2 id="stuck-heading" className="text-xl font-bold">
-            What you're stuck with
-          </h2>
-          <div className="rounded-lg border border-rope bg-hull px-4 py-3">
+        <section aria-labelledby="stuck-heading" className="min-w-0 space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+            <h2 id="stuck-heading" className="text-xl font-bold">
+              What you're stuck with
+            </h2>
+            <span className="text-sm text-fog">{money(s.stuck_value)} at cost</span>
+          </div>
+          <div className="overflow-hidden rounded-lg border border-rope bg-hull">
             <StuckList items={data.stuck_items} />
           </div>
         </section>

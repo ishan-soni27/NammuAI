@@ -5,10 +5,19 @@
 import { differenceInCalendarDays } from "date-fns";
 import { formatShortDate, parseBusinessDate } from "./dates";
 
-/** "480 cs", "8,479 lb". */
+// Units spelled out (Ishan, 2026-11-26: "what is cs?"). Same words as the API's explain.UNIT_WORDS.
+const UNIT_WORDS: Record<string, [string, string]> = { CS: ["case", "cases"], LB: ["lb", "lb"] };
+
+/** "cases" / "case" / "lb"; an unknown code is shown lower-cased, as BlueTide wrote it. */
+export function unitWord(uom: string, value = 2): string {
+  const [one, many] = UNIT_WORDS[uom.toUpperCase()] ?? [uom.toLowerCase(), uom.toLowerCase()];
+  return Math.round(value) === 1 ? one : many;
+}
+
+/** "480 cases", "8,479 lb". */
 export function qty(value: number | null | undefined, uom: string): string {
   if (value === null || value === undefined) return "–";
-  return `${Math.round(value).toLocaleString("en-US")} ${uom.toLowerCase()}`;
+  return `${Math.round(value).toLocaleString("en-US")} ${unitWord(uom, value)}`;
 }
 
 /** "$81,232". */

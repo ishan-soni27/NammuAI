@@ -16,8 +16,8 @@ export function ErrorState({ error, onRetry }: ErrorStateProps) {
   const reference = error instanceof ApiError ? error.requestId : null;
 
   return (
-    <div role="alert" className="rounded-lg border border-late bg-late-tint px-5 py-4 text-ink">
-      <p className="font-semibold text-late">That didn't load.</p>
+    <div role="alert" className="rounded-lg border border-red bg-red-tint px-5 py-4 text-ink">
+      <p className="font-semibold text-red">That didn't load.</p>
       <p className="mt-1">{message}</p>
       {reference && <p className="mt-2 text-sm text-fog">Reference: {reference}</p>}
       {onRetry && (

@@ -41,8 +41,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             role="status"
             className={`rounded-md border px-4 py-3 shadow-md ${
               t.kind === "success"
-                ? "border-fine bg-fine-tint text-fine"
-                : "border-late bg-late-tint text-late"
+                ? "border-green bg-green-tint text-green"
+                : "border-red bg-red-tint text-red"
             }`}
           >
             {t.message}

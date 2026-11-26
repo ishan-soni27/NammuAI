@@ -35,8 +35,8 @@ import { qty } from "../lib/format";
 const INK = "var(--color-ink)";
 const FOG = "var(--color-fog)";
 const ROPE = "var(--color-rope)";
-const LATE = "var(--color-late)";
-const LATE_TINT = "var(--color-late-tint)";
+const RED = "var(--color-red)";
+const RED_TINT = "var(--color-red-tint)";
 const SURFACE = "var(--color-hull)";
 
 const OUT = 0.5; // under half a case (or pound) left counts as out of stock
@@ -166,7 +166,7 @@ export function ProjectionChart({ detail }: { detail: ItemDetail }) {
         )}
         {outRuns.length > 0 && (
           <span className="inline-flex items-center gap-2">
-            <span className="inline-block h-3 w-4 rounded-sm bg-late-tint ring-1 ring-late/40" />
+            <span className="inline-block h-3 w-4 rounded-sm bg-red-tint ring-1 ring-red/40" />
             Out of stock
           </span>
         )}
@@ -184,7 +184,7 @@ export function ProjectionChart({ detail }: { detail: ItemDetail }) {
                 key={x1}
                 x1={x1}
                 x2={x2}
-                fill={LATE_TINT}
+                fill={RED_TINT}
                 fillOpacity={0.9}
                 stroke="none"
                 ifOverflow="hidden"
@@ -224,11 +224,9 @@ export function ProjectionChart({ detail }: { detail: ItemDetail }) {
               tick={{ fill: FOG, fontSize: 12 }}
               axisLine={false}
               tickLine={false}
-              width={68}
+              width={48}
               domain={[0, "auto"]}
-              tickFormatter={(v: number) =>
-                `${Math.round(v).toLocaleString("en-US")} ${uom.toLowerCase()}`
-              }
+              tickFormatter={(v: number) => Math.round(v).toLocaleString("en-US")}
             />
             <Tooltip
               content={<ChartTooltip uom={uom} />}
@@ -283,7 +281,7 @@ export function ProjectionChart({ detail }: { detail: ItemDetail }) {
             {runOut && (
               <ReferenceLine
                 x={runOut}
-                stroke={LATE}
+                stroke={RED}
                 strokeWidth={1}
                 label={{
                   value: `Runs out ${formatShortDate(runOut)}`,
@@ -319,7 +317,7 @@ export function ProjectionTable({ detail }: { detail: ItemDetail }) {
   const weekly = detail.projection.filter((_, i) => i % 7 === 0);
   return (
     <details className="mt-3">
-      <summary className="cursor-pointer text-sm font-semibold text-soon">
+      <summary className="cursor-pointer text-sm font-semibold text-ink">
         See the numbers week by week
       </summary>
       <div className="mt-2 max-h-80 overflow-auto">

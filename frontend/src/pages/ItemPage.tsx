@@ -21,7 +21,7 @@ import { SetPoDate } from "../components/SetPoDate";
 import { StatusChip, TagChip } from "../components/StatusChip";
 import { Term } from "../components/Term";
 import { formatShortDate, formatTimestamp, parseBusinessDate } from "../lib/dates";
-import { duration, money, qty, weeks } from "../lib/format";
+import { duration, money, qty, unitWord, weeks } from "../lib/format";
 import { itemName } from "../lib/names";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -160,7 +160,7 @@ function Item({ detail }: { detail: ItemDetail }) {
 
   return (
     <div className="space-y-5">
-      <Link to="/" className="text-sm font-semibold text-soon underline underline-offset-2">
+      <Link to="/" className="text-sm font-semibold text-ink underline underline-offset-2">
         Back to Monday
       </Link>
 
@@ -217,7 +217,9 @@ function Item({ detail }: { detail: ItemDetail }) {
             ))}
           </ol>
         </Card>
-        <Card title={`Stock over the next ${duration(card.runway.horizon_days)}`}>
+        <Card
+          title={`Stock over the next ${duration(card.runway.horizon_days)}, in ${unitWord(uom)}`}
+        >
           <ProjectionChart detail={detail} />
           <ProjectionTable detail={detail} />
         </Card>
@@ -319,7 +321,7 @@ function Item({ detail }: { detail: ItemDetail }) {
               )}
               {detail.late.length > 0 && (
                 <div>
-                  <h3 className="font-semibold text-late">
+                  <h3 className="font-semibold text-red">
                     <Term explain="late">Late</Term>, not counted
                   </h3>
                   <ul className="mt-1 divide-y divide-rope">

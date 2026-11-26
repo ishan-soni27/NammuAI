@@ -20,29 +20,20 @@
   --color-fog: #5e6e7a; /* secondary text */
   --color-rope: #d6dee3; /* rules and borders */
 
-  /* Order statuses: text on tint */
-  --color-late: #b3261e;
-  --color-late-tint: #fbe9e7;
-  --color-week: #8a5a00;
-  --color-week-tint: #fff1cc;
-  --color-soon: #1f5f99;
-  --color-soon-tint: #e6f0fa;
-  --color-fine: #2e6b4e;
-  --color-fine-tint: #e7f3ec;
-  --color-handled: #55626c;
-  --color-handled-tint: #edf0f2;
-
-  /* Stuck tags: text on tint */
-  --color-expired: #7f1d1d;
-  --color-expired-tint: #f9e3e3;
-  --color-stopped: #4a5560;
-  --color-stopped-tint: #eceff1;
-  --color-sixmonth: #9a3412;
-  --color-sixmonth-tint: #fdebdd;
-  --color-harbor: #1e4e7a;
-  --color-harbor-tint: #e3edf6;
-  --color-overstock: #6b5b1e;
-  --color-overstock-tint: #f4efd9;
+  /* Traffic lights (Ishan, 2026-11-26: red, yellow and green only; no blue).
+     Always paired with an icon and words, never colour alone.
+       red    = too late; expired or inside the six-month line
+       yellow = order this week / order soon; stopped selling, long at Harbor, overstock
+       green  = fine
+       grey   = handled, no recent sales, not planned */
+  --color-red: #b3261e; /* fills, and text on white or red-tint (AA) */
+  --color-red-tint: #fdecea;
+  --color-yellow: #f2b705; /* fills only; text on yellow is ink (AA) */
+  --color-yellow-tint: #fff5cc;
+  --color-green: #2e7d32; /* fills, and text on white or green-tint (AA) */
+  --color-green-tint: #e8f5e9;
+  --color-grey: #55626c;
+  --color-grey-tint: #edf0f2;
 }
 
 @layer base {
@@ -60,7 +51,7 @@
 
   /* Visible keyboard focus (§9.1). */
   :focus-visible {
-    outline: 3px solid var(--color-soon);
+    outline: 3px solid var(--color-ink);
     outline-offset: 2px;
     border-radius: 4px;
   }

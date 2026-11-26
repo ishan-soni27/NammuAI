@@ -57,7 +57,7 @@ function TrapRows({ trapId }: { trapId: string }) {
                     <td className="px-1 py-1.5 align-top">
                       {row.raw ? (
                         <details>
-                          <summary className="cursor-pointer text-soon">Show</summary>
+                          <summary className="cursor-pointer text-ink">Show</summary>
                           <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 text-xs">
                             {Object.entries(row.raw).map(([k, v]) => (
                               <div key={k} className="contents">

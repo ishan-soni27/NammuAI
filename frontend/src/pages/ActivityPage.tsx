@@ -172,7 +172,7 @@ export function ActivityPage() {
                 </thead>
                 <tbody className="divide-y divide-rope">
                   {list.map((e) => (
-                    <tr key={e.id} className={e.level === "ERROR" ? "text-late" : ""}>
+                    <tr key={e.id} className={e.level === "ERROR" ? "text-red" : ""}>
                       <td className={td}>{formatTimestamp(e.occurred_at)}</td>
                       <td className={td}>
                         {e.level === "ERROR" ? "Error" : e.level === "WARNING" ? "Warning" : "Info"}
@@ -185,7 +185,7 @@ export function ActivityPage() {
                         {e.request_id && <div className="text-fog">Reference {e.request_id}</div>}
                         {e.details && (
                           <details>
-                            <summary className="cursor-pointer text-soon">Details</summary>
+                            <summary className="cursor-pointer text-ink">Details</summary>
                             <pre className="mt-1 max-w-xl overflow-x-auto whitespace-pre-wrap break-all text-xs text-ink">
                               {JSON.stringify(e.details, null, 2)}
                             </pre>
