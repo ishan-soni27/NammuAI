@@ -17,18 +17,24 @@ Rules (named in tests as test_r1_..., test_r2_..., docs/DECISIONS.md ADR-027):
   R4  BlueTide says received/closed while she still expects more: not counted; flagged (Ishan).
   R5  BlueTide says cancelled while she still expects it: not counted; flagged.
   R6  A received lot already in a BlueTide stock count dated on/after the receipt: not added again.
-  (R7-R10 cover shipments and moves: step 2.)
+  R7  BlueTide shows an order invoiced while Dana's copy is open: not promised or taken again; flagged.
+  R8  BlueTide shows it open while Dana's copy is shipped: hers applies, BlueTide's open line is dropped.
+      (Same order in both, both open: counted once, hers. Both shipped: BlueTide's stock count already
+      has it out, so her picks aren't taken again.)
+  R9  Moves and adjustments (no BlueTide document): only those dated after BlueTide's stock count apply.
+  R10 A pick larger than its lot: the lot stops at 0 and the rest comes from the next lot to expire in
+      the same building; anything still missing is a shortfall, flagged (stock never goes below 0).
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from typing import Literal
 
-from app.planning.types import LotInput, POLineInput
+from app.planning.types import LotInput, POLineInput, SaleInput
 
 EPSILON = 0.5  # under half a case/lb counts as "the same quantity" (whole units on screen)
 
@@ -320,3 +326,202 @@ def reconcile_pos(
 
     lines.sort(key=lambda x: (x.po_no, x.line_no))
     return Reconciled(tuple(lines), tuple(po_inputs), tuple(received_lots), tuple(skipped))
+
+
+# ---- Step 2: shipments, picks and moves (R7-R10) ----------------------------------------------
+
+ShipmentStatus = Literal["open", "shipped", "cancelled"]
+
+
+@dataclass(frozen=True)
+class AppShipmentLine:
+    """One line of an order Dana logged (see services/planning_inputs for how it's built)."""
+
+    shipment_id: int
+    order_no: str
+    line_no: int
+    item_code: str
+    customer_name: str
+    kind: Literal["customer", "sample"]
+    order_date: date
+    ship_date: date
+    status: ShipmentStatus
+    qty: float
+    is_real_demand: bool  # loader/classify.classify_sale said real_demand (samples never are)
+
+
+@dataclass(frozen=True)
+class MovementInput:
+    """A stock change Dana recorded (not a receipt; undone ones are left out by the caller)."""
+
+    movement_id: int
+    kind: str  # shipment / sample / move_out / move_in / adjustment
+    item_code: str
+    location_code: str
+    lot_no: str
+    qty: float  # signed: - out of the building, + into it
+    expiry_date: date | None
+    unit_cost: float | None
+    movement_date: date
+    shipment_id: int | None = None
+
+
+@dataclass(frozen=True)
+class ShipmentLineRecord:
+    order_no: str
+    line_no: int
+    item_code: str
+    status: ShipmentStatus
+    promised: bool  # counts as promised to a customer (an open order)
+    taken_from_stock: bool  # its picks come out of the stock the plan uses
+    counts_as_demand: bool  # feeds the selling rate
+    flags: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ShipmentsReconciled:
+    lines: tuple[ShipmentLineRecord, ...]
+    sales: tuple[SaleInput, ...]  # Dana's lines the engine should see
+    drop_bluetide_open: frozenset[tuple[str, str]]  # (order, item) of BlueTide open lines replaced by hers
+    applied_shipments: frozenset[int]  # shipment ids whose picks are taken from stock
+
+
+def reconcile_shipments(
+    app_lines: Sequence[AppShipmentLine], bluetide_orders: dict[tuple[str, str], str]
+) -> ShipmentsReconciled:
+    """Match Dana's orders with BlueTide's by order number + item (R7, R8). Pure."""
+    records: list[ShipmentLineRecord] = []
+    sales: list[SaleInput] = []
+    drop: set[tuple[str, str]] = set()
+    applied: set[int] = set()
+    not_applied: set[int] = set()
+    for a in app_lines:
+        key = (a.order_no, a.item_code)
+        bt = bluetide_orders.get(key)
+        flags: list[str] = []
+        promised = taken = demand = False
+        if bt is not None and bt != "INVOICED":
+            drop.add(key)  # her copy is the main one (counted once)
+        if a.status == "cancelled":
+            if bt == "INVOICED":
+                flags.append("BlueTide shows this order invoiced (shipped), but it's cancelled here")
+        elif bt == "INVOICED":
+            if a.status == "open":  # R7
+                flags.append(
+                    "BlueTide shows this order invoiced (shipped). Not counted again; mark it shipped here"
+                )
+            # shipped in both: BlueTide's stock count already has it out, and its sale is in the history
+            not_applied.add(a.shipment_id)
+        elif a.status == "open":
+            promised = True
+            if bt == "CANCELLED":
+                flags.append("BlueTide says this order was cancelled; still counted as promised here")
+        else:  # shipped, BlueTide open or unknown (R8)
+            taken = True
+            demand = a.is_real_demand
+        if promised:
+            sales.append(
+                SaleInput(a.item_code, a.order_no, a.customer_name, a.order_date, a.ship_date, a.qty, True)
+            )
+        if demand:
+            sales.append(
+                SaleInput(a.item_code, a.order_no, a.customer_name, a.order_date, a.ship_date, a.qty, False)
+            )
+        if taken:
+            applied.add(a.shipment_id)
+        records.append(
+            ShipmentLineRecord(
+                a.order_no, a.line_no, a.item_code, a.status, promised, taken, demand, tuple(flags)
+            )
+        )
+    return ShipmentsReconciled(
+        tuple(records), tuple(sales), frozenset(drop), frozenset(applied - not_applied)
+    )
+
+
+@dataclass(frozen=True)
+class LotRecord:
+    """A lot the plan counts, with where it came from (shown on the item page)."""
+
+    lot: LotInput
+    origin: Literal["bluetide", "received", "moved"]
+    note: str | None = None
+
+
+def apply_movements(
+    lots: Sequence[LotRecord],
+    movements: Sequence[MovementInput],
+    applied_shipments: frozenset[int],
+    snapshot_date: date | None,
+    sellable_locations: frozenset[str],
+) -> tuple[tuple[LotRecord, ...], tuple[str, ...]]:
+    """Apply Dana's picks, moves and adjustments to the lots (R9, R10). Pure; stock never goes below 0."""
+    qty = [r.lot.qty or 0.0 for r in lots]
+    records = list(lots)
+    flags: list[str] = []
+
+    def counts(m: MovementInput) -> bool:
+        if m.kind in ("shipment", "sample"):
+            return m.shipment_id in applied_shipments
+        return snapshot_date is None or m.movement_date > snapshot_date  # R9
+
+    for m in sorted((m for m in movements if counts(m)), key=lambda x: (x.movement_date, x.movement_id)):
+        if m.qty > 0:
+            i = next(
+                (
+                    i
+                    for i, r in enumerate(records)
+                    if (r.lot.item_code, r.lot.location_code, r.lot.lot_no)
+                    == (m.item_code, m.location_code, m.lot_no)
+                    and not r.lot.is_adjustment
+                ),
+                None,
+            )
+            if i is None:
+                records.append(
+                    LotRecord(
+                        LotInput(
+                            m.item_code, m.location_code, m.lot_no, 0.0, m.expiry_date, False, m.unit_cost
+                        ),
+                        "moved",
+                        "Moved here in the app",
+                    )
+                )
+                qty.append(0.0)
+                i = len(records) - 1
+            qty[i] += m.qty
+            continue
+        need = -m.qty
+        exact = [
+            i
+            for i, r in enumerate(records)
+            if (r.lot.item_code, r.lot.location_code, r.lot.lot_no)
+            == (m.item_code, m.location_code, m.lot_no)
+            and not r.lot.is_adjustment
+        ]
+        others = sorted(
+            (
+                i
+                for i, r in enumerate(records)
+                if r.lot.item_code == m.item_code
+                and r.lot.location_code == m.location_code
+                and r.lot.location_code in sellable_locations
+                and not r.lot.is_adjustment
+                and i not in exact
+            ),
+            key=lambda i: (records[i].lot.expiry_date or date.max, records[i].lot.lot_no),
+        )
+        for i in exact + others:  # R10: the named lot first, then the next to expire in that building
+            take = min(qty[i], need)
+            if take > 0:
+                qty[i] -= take
+                need -= take
+            if need < EPSILON:
+                break
+        if need >= EPSILON:
+            flags.append(
+                f"{_qty(need)} of {m.item_code} taken from {m.location_code} lot {m.lot_no} that the stock "
+                "doesn't have (shortfall)"
+            )
+    out = tuple(replace(r, lot=replace(r.lot, qty=q)) for r, q in zip(records, qty, strict=True))
+    return out, tuple(flags)

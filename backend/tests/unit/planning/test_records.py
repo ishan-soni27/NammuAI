@@ -241,3 +241,125 @@ def test_the_plan_works_from_danas_records_alone_with_no_bluetide_data() -> None
     assert p.on_hand.sellable == pytest.approx(120)
     assert [(i.reference, i.qty, i.eta) for i in p.incoming] == [("Your PO KB-00001 line 1", 80, D(14))]
     assert p.confirmed.run_out_date is not None  # 2 a day: 120 + 80 lasts about 100 days
+
+
+# ---- Step 2: shipments, picks and moves (R7-R10) ---------------------------------------------
+
+from app.planning.records import (  # noqa: E402
+    AppShipmentLine,
+    LotRecord,
+    MovementInput,
+    apply_movements,
+    reconcile_shipments,
+)
+
+
+def ship(status: str = "open", order_no: str = "SH-00001", kind: str = "customer", real: bool = True, qty=40):
+    return AppShipmentLine(1, order_no, 1, "X", "Seabright Markets", kind, D(-1), D(3), status, qty, real)  # type: ignore[arg-type]
+
+
+def test_r7_bluetide_invoiced_beats_an_open_order_here() -> None:
+    r = reconcile_shipments([ship("open", "SO-1")], {("SO-1", "X"): "INVOICED"})
+    (line,) = r.lines
+    assert not line.promised and not line.taken_from_stock and r.sales == ()
+    assert any("invoiced" in f for f in line.flags) and r.applied_shipments == frozenset()
+
+
+def test_r8_shipped_here_but_open_in_bluetide_is_taken_once_from_stock() -> None:
+    r = reconcile_shipments([ship("shipped", "SO-1")], {("SO-1", "X"): "OPEN"})
+    assert r.applied_shipments == {1} and ("SO-1", "X") in r.drop_bluetide_open
+    assert [(s.is_open, s.qty) for s in r.sales] == [
+        (False, 40)
+    ]  # a sale for the selling rate, not a promise
+
+
+def test_r8_open_in_both_is_promised_once_hers() -> None:
+    r = reconcile_shipments([ship("open", "SO-1", qty=50)], {("SO-1", "X"): "OPEN"})
+    assert ("SO-1", "X") in r.drop_bluetide_open and [(s.is_open, s.qty) for s in r.sales] == [(True, 50)]
+
+
+def test_shipped_in_both_is_not_taken_again() -> None:
+    r = reconcile_shipments([ship("shipped", "SO-1")], {("SO-1", "X"): "INVOICED"})
+    assert r.applied_shipments == frozenset() and r.sales == () and r.lines[0].flags == ()
+
+
+def test_cancelled_here_drops_bluetides_open_line() -> None:
+    r = reconcile_shipments([ship("cancelled", "SO-1")], {("SO-1", "X"): "OPEN"})
+    assert ("SO-1", "X") in r.drop_bluetide_open and r.sales == () and not r.lines[0].promised
+
+
+def test_a_shipped_sample_takes_stock_but_is_not_demand() -> None:
+    r = reconcile_shipments([ship("shipped", kind="sample", real=False)], {})
+    assert r.applied_shipments == {1} and r.sales == ()
+
+
+def _lots(*specs) -> list[LotRecord]:
+    return [LotRecord(lot(qty=q, location=loc, lot_no=n, expiry=e), "bluetide") for q, loc, n, e in specs]
+
+
+def mv(mid, kind, qty, loc="NB", lot_no="L1", on=D(0), shipment=None, expiry=date(2028, 1, 1)):
+    return MovementInput(mid, kind, "X", loc, lot_no, qty, expiry, 10.0, on, shipment)
+
+
+def test_r10_a_pick_larger_than_its_lot_takes_the_next_to_expire_in_that_building() -> None:
+    lots = _lots(
+        (30, "NB", "L1", date(2028, 1, 1)),
+        (50, "NB", "L2", date(2027, 6, 1)),
+        (50, "NB", "L3", date(2028, 6, 1)),
+    )
+    out, flags = apply_movements(
+        lots, [mv(1, "shipment", -60, shipment=1)], frozenset({1}), None, frozenset({"NB"})
+    )
+    assert [r.lot.qty for r in out] == [0, 20, 50] and flags == ()
+
+
+def test_r10_stock_never_goes_below_zero_and_the_shortfall_is_flagged() -> None:
+    out, flags = apply_movements(
+        _lots((30, "NB", "L1", date(2028, 1, 1))),
+        [mv(1, "shipment", -45, shipment=1)],
+        frozenset({1}),
+        None,
+        frozenset({"NB"}),
+    )
+    assert out[0].lot.qty == 0 and len(flags) == 1 and "15" in flags[0] and "shortfall" in flags[0]
+
+
+def test_picks_of_a_shipment_not_taken_from_stock_are_ignored() -> None:
+    out, _ = apply_movements(
+        _lots((30, "NB", "L1", None)),
+        [mv(1, "shipment", -10, shipment=7)],
+        frozenset(),
+        None,
+        frozenset({"NB"}),
+    )
+    assert out[0].lot.qty == 30
+
+
+def test_a_move_creates_the_lot_in_the_new_building_with_its_expiry() -> None:
+    moves = [mv(1, "move_out", -20, "HCS", "L9"), mv(2, "move_in", 20, "NB", "L9", expiry=date(2027, 3, 1))]
+    out, flags = apply_movements(
+        _lots((50, "HCS", "L9", date(2027, 3, 1))), moves, frozenset(), None, frozenset({"NB", "HCS"})
+    )
+    by_place = {r.lot.location_code: r for r in out}
+    assert by_place["HCS"].lot.qty == 30 and by_place["NB"].lot.qty == 20
+    assert (
+        by_place["NB"].origin == "moved"
+        and by_place["NB"].lot.expiry_date == date(2027, 3, 1)
+        and flags == ()
+    )
+
+
+def test_r9_a_move_dated_before_bluetides_stock_count_is_already_in_it() -> None:
+    moves = [mv(1, "move_out", -20, "HCS", "L9", on=D(-5)), mv(2, "move_in", 20, "NB", "L9", on=D(-5))]
+    out, _ = apply_movements(
+        _lots((50, "HCS", "L9", None)), moves, frozenset(), D(-1), frozenset({"NB", "HCS"})
+    )
+    assert [(r.lot.location_code, r.lot.qty) for r in out] == [("HCS", 50)]
+
+
+def test_shipping_her_own_received_stock_with_no_bluetide_data() -> None:
+    received = [LotRecord(lot(qty=120, lot_no="R1"), "received")]
+    out, _ = apply_movements(
+        received, [mv(1, "shipment", -45, lot_no="R1", shipment=1)], frozenset({1}), None, frozenset({"NB"})
+    )
+    assert out[0].lot.qty == 75

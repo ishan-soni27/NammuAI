@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -26,7 +27,7 @@ from app.planning.calendar import add_months
 from app.planning.engine import plan
 from app.planning.stuck import TAG_ORDER, lot_tags
 from app.planning.supply import lot_status
-from app.planning.types import LocationInput, LotInput, PlanResult, Scenario
+from app.planning.types import LocationInput, PlanResult, Scenario
 from app.services import presenters
 from app.services.planning_inputs import LoadInfo, PlanningContext, build_context
 
@@ -129,85 +130,66 @@ def item_detail(session: Session, rules: BusinessRules, raw_code: str) -> s.Item
     six_month_line = add_months(as_of, rules.six_month_line_months)
 
     locations = {loc.code: loc for loc in session.scalars(select(m.Location)).all()}
-    lot_rows = session.scalars(
-        select(m.InventoryLot).where(m.InventoryLot.item_code == code).order_by(m.InventoryLot.expiry_date)
-    ).all()
+    # The lots the plan counted (BlueTide's count, then Dana's receipts, picks and moves applied),
+    # with BlueTide's details (pack date, original unit) where the lot came from its count.
+    bluetide_rows: dict[tuple[str, str], m.InventoryLot] = {}
+    for row in session.scalars(
+        select(m.InventoryLot).where(m.InventoryLot.item_code == code).order_by(m.InventoryLot.id)
+    ).all():
+        bluetide_rows.setdefault((row.location_code, row.lot_no), row)
     lots_out = []
-    for row in lot_rows:
-        loc = locations.get(row.location_code)
-        loc_in = (
-            LocationInput(loc.code, loc.is_sellable, loc.may_return_to_stock, loc.is_third_party_storage)
-            if loc
-            else None
-        )
-        qty = float(row.qty_sell_uom) if row.qty_sell_uom is not None else None
-        cost = float(row.unit_cost_sell_uom) if row.unit_cost_sell_uom is not None else None
-        lot_in = LotInput(code, row.location_code, row.lot_no, qty, row.expiry_date, row.is_adjustment, cost)
-        counted, reason = lot_status(lot_in, loc_in, as_of, six_month_line)
-        tags = (
-            lot_tags(lot_in, plan_.lifecycle_status, plan_.weeks_of_cover, loc_in, rules)
-            if loc_in
-            and loc_in.is_sellable
-            and qty
-            and qty > 0
-            and not row.is_adjustment
-            and plan_.lifecycle_status != "fresh_out_of_scope"
-            else []
-        )
-        lots_out.append(
-            s.LotOut(
-                lot_no=row.lot_no,
-                location_code=row.location_code,
-                location_name=loc.name if loc else row.location_code,
-                qty=qty,
-                qty_source=float(row.qty_source),
-                uom_source=row.uom_source,
-                pack_date=row.pack_date,
-                expiry_date=row.expiry_date,
-                received_date=row.received_date,
-                unit_cost=cost,
-                value_at_cost=round(qty * cost, 2) if qty is not None and cost is not None else None,
-                counted=counted,
-                reason=reason,
-                stuck_tags=sorted(tags, key=TAG_ORDER.index),
-            )
-        )
-
-    # Stock Dana received in the app (R3): the same lots the engine counted, with where they came from.
-    for received in context.reconciled.received_lots:
-        lot_in = received.lot
-        if lot_in.item_code != code:
-            continue
+    records = [r for r in context.lot_records if r.lot.item_code == code]
+    for record in sorted(records, key=lambda r: (r.lot.expiry_date or date.max, r.lot.lot_no)):
+        lot_in = record.lot
+        if record.origin != "bluetide" and not lot_in.qty:
+            continue  # a lot Dana received or moved, now empty: nothing to show
         loc = locations.get(lot_in.location_code)
         loc_in = (
             LocationInput(loc.code, loc.is_sellable, loc.may_return_to_stock, loc.is_third_party_storage)
             if loc
             else None
         )
+        row = (
+            bluetide_rows.get((lot_in.location_code, lot_in.lot_no)) if record.origin == "bluetide" else None
+        )
+        original = float(row.qty_sell_uom) if row is not None and row.qty_sell_uom is not None else None
+        changed = row is not None and original is not None and abs((lot_in.qty or 0) - original) >= 0.5
         counted, reason = lot_status(lot_in, loc_in, as_of, six_month_line)
+        if record.note:
+            reason = f"{reason} {record.note}."
+        if changed:
+            reason = (
+                f"{reason} Changed in the app (shipped or moved; BlueTide's count had {round(original):,})."
+            )
         tags = (
             lot_tags(lot_in, plan_.lifecycle_status, plan_.weeks_of_cover, loc_in, rules)
-            if loc_in and loc_in.is_sellable and lot_in.qty
+            if loc_in
+            and loc_in.is_sellable
+            and lot_in.qty
+            and lot_in.qty > 0
+            and not lot_in.is_adjustment
+            and plan_.lifecycle_status != "fresh_out_of_scope"
             else []
         )
         qty = lot_in.qty
+        same_as_count = row is not None and not changed
         lots_out.append(
             s.LotOut(
                 lot_no=lot_in.lot_no,
                 location_code=lot_in.location_code,
                 location_name=loc.name if loc else lot_in.location_code,
                 qty=qty,
-                qty_source=qty or 0.0,
-                uom_source=plan_.item.sell_uom,
-                pack_date=None,
+                qty_source=float(row.qty_source) if same_as_count and row is not None else (qty or 0.0),
+                uom_source=row.uom_source if same_as_count and row is not None else plan_.item.sell_uom,
+                pack_date=row.pack_date if row is not None else None,
                 expiry_date=lot_in.expiry_date,
-                received_date=received.received_on,
+                received_date=row.received_date if row is not None else None,
                 unit_cost=lot_in.unit_cost,
                 value_at_cost=round(qty * lot_in.unit_cost, 2)
-                if qty and lot_in.unit_cost is not None
+                if qty is not None and lot_in.unit_cost is not None
                 else None,
                 counted=counted,
-                reason=f"{reason} Received in the app ({received.po_no} line {received.po_line_no}).",
+                reason=reason,
                 stuck_tags=sorted(tags, key=TAG_ORDER.index),
             )
         )

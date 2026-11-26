@@ -9,7 +9,8 @@
     APP      vendor_settings, item_settings, po_eta_overrides, handled_flags: what Dana tells
              the tool; and, since Phase 6 (ADR-026/027), her own records: app_vendors,
              app_items, purchase_orders, purchase_order_lines_app, po_line_status,
-             stock_movements. The loader NEVER truncates or deletes these (invariant #5,
+             stock_movements, app_customers, shipments, shipment_lines. The loader NEVER
+             truncates or deletes these (invariant #5,
              ADR-008). BlueTide is one optional source; the app plans from these alone too.
     LOGGING  load_runs, data_issues, audit_log, event_log, request_log (§10).
 
@@ -95,6 +96,8 @@ EVENT_SOURCES = ("api", "loader", "web")
 APP_ITEM_STATUSES = ("active", "discontinued")
 PO_LINE_STATUSES = ("shipped", "cancelled")  # "received" is never stored: it is worked out from receipts
 MOVEMENT_KINDS = ("receipt", "shipment", "sample", "move_out", "move_in", "adjustment")
+SHIPMENT_STATUSES = ("open", "shipped", "cancelled")
+SHIPMENT_KINDS = ("customer", "sample")  # transfers between buildings are stock moves, not shipments
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -573,9 +576,70 @@ class StockMovement(Base):
     po_no: Mapped[str | None]
     po_line_no: Mapped[int | None] = mapped_column(Integer)
     reverses_id: Mapped[int | None] = mapped_column(BIG_ID, ForeignKey("stock_movements.id"))
+    # Step 2: a pick for a shipment line, or the other half of a move between buildings.
+    shipment_id: Mapped[int | None] = mapped_column(BIG_ID, ForeignKey("shipments.id"))
+    shipment_line_no: Mapped[int | None] = mapped_column(Integer)
+    pair_id: Mapped[int | None] = mapped_column(BIG_ID, ForeignKey("stock_movements.id"))
     note: Mapped[str | None]
     created_at: Mapped[datetime] = _created_now()
     created_by: Mapped[str]
+
+
+class AppCustomer(Base):
+    """A customer Dana added. BlueTide's customers table is rebuilt on every load, so hers live here."""
+
+    __tablename__ = "app_customers"
+
+    customer_code: Mapped[str] = mapped_column(primary_key=True)
+    name: Mapped[str]
+    customer_type: Mapped[str]  # RESTAURANT / GROCERY / ... (never INTERNAL: moves are stock moves)
+    note: Mapped[str | None]
+    created_at: Mapped[datetime] = _created_now()
+    created_by: Mapped[str]
+    updated_at: Mapped[datetime] = _created_now()
+    updated_by: Mapped[str]
+
+
+class Shipment(Base):
+    """An order going out to a customer (or a sample). Open = promised; shipped = it left the building."""
+
+    __tablename__ = "shipments"
+    __table_args__ = (
+        UniqueConstraint("order_no"),
+        CheckConstraint(_in("status", SHIPMENT_STATUSES), name="status"),
+        CheckConstraint(_in("kind", SHIPMENT_KINDS), name="kind"),
+    )
+
+    id: Mapped[int] = _pk()
+    order_no: Mapped[str]
+    customer_code: Mapped[str]
+    kind: Mapped[str]
+    order_date: Mapped[date]
+    ship_date: Mapped[date]  # when it's due to leave
+    location_code: Mapped[str]  # the building it ships from
+    status: Mapped[str]
+    shipped_on: Mapped[date | None]
+    cancel_reason: Mapped[str | None]
+    note: Mapped[str | None]
+    created_at: Mapped[datetime] = _created_now()
+    created_by: Mapped[str]
+    updated_at: Mapped[datetime] = _created_now()
+    updated_by: Mapped[str]
+
+
+class ShipmentLine(Base):
+    __tablename__ = "shipment_lines"
+    __table_args__ = (
+        UniqueConstraint("shipment_id", "line_no"),
+        CheckConstraint("qty > 0", name="qty_positive"),
+    )
+
+    id: Mapped[int] = _pk()
+    shipment_id: Mapped[int] = mapped_column(BIG_ID, ForeignKey("shipments.id"))
+    line_no: Mapped[int] = mapped_column(Integer)
+    item_code: Mapped[str]
+    qty: Mapped[Decimal]  # in the item's selling unit
+    unit_price: Mapped[Decimal | None]
 
 
 # =====================================================================================
@@ -689,5 +753,8 @@ APP_LAYER: tuple[str, ...] = (
     "purchase_order_lines_app",
     "po_line_status",
     "stock_movements",
+    "app_customers",
+    "shipments",
+    "shipment_lines",
 )
 LOGGING_LAYER: tuple[str, ...] = ("load_runs", "data_issues", "audit_log", "event_log", "request_log")
