@@ -72,7 +72,8 @@ frontend/src/                api/ (client, types mirroring schemas.py, queries.t
                              DataNotes, Activity), components/ (OrderRow, StatusGroup, RunwayBar, DownloadLink,
                              ProjectionChart, StuckList, SetPoDate, MarkHandledDialog, Term = hover glossary, ...),
                              lib/ (dates, format, names, actor, reportError), styles/ (§9.1 tokens)
-scripts/                     profile_data.py (independent fact check), compare_answer_key.py (engine vs §7), set_database_password.py
+scripts/                     profile_data.py (independent fact check), compare_answer_key.py (engine vs §7), set_database_password.py,
+                             check_cron.py (when Vercel's daily cron last called; logged as actor "Vercel cron")
 ```
 
 ## Commands
@@ -117,6 +118,7 @@ python3 scripts/profile_data.py
 ## Live-change playbook (BUILD_PROMPT §17)
 | Likely request | Where to change |
 |---|---|
+| "Pretend today is a different day" | `AS_OF_DATE` env var (Vercel → Settings → Environment Variables, then redeploy; locally `backend/.env`). Imports refuse a stock count after today |
 | "Count QA-HOLD as available" or "add a location" | `data/reference/locations.csv` (+ reload) or the `locations` table. For a toggle, add a param to `planning/supply.py` |
 | "Change the six-month line, cushion, thresholds" | `backend/app/config/business_rules.py` |
 | "Exclude another order or customer type" | `data/reference/excluded_orders.csv` or the classifier order in `loader/classify.py` |

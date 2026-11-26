@@ -3,21 +3,81 @@
 Each decision records **Context**, **Decision**, **Alternatives**, **Tradeoffs** and **Revisit when**, plus who decided.
 Ishan owns every decision; "Claude proposed, Ishan approved" means the idea came from the AI and Ishan accepted it.
 
-> **Status (Phase 0, 2026-11-25):** ADR-001 to ADR-016 are pre-decided in `BUILD_PROMPT.md` §13.3 and are listed here
-> with their one-line decision. Each gets its full write-up as the code that implements it lands, and all are finished
-> in Phase 6. ADR-017 and ADR-018 were made in Phase 0 and are written out in full.
+> **Status (final docs phase, 2026-11-26):** every ADR is written out in full. ADR-001 to ADR-016 were pre-decided in
+> Ishan's planning chat (`BUILD_PROMPT.md` §4.2, §13.3) and filled in as the code that implements them landed. Where a
+> later decision overrode the spec (hosting, late POs, open orders, the app keeping its own records), the ADR says so.
+
+## Index
+
+| ADR | About | In one line |
+|---|---|---|
+| 001 | Stack | Python (FastAPI) backend, React + TypeScript frontend, Supabase Postgres |
+| 002 | Hosting | One Vercel project (website + API as two services) and Supabase, not Render |
+| 003 | Raw layer | Every CSV row kept as exported; clean rows point back; every change logged as a data note |
+| 004 | Engine | A pure planning engine, run on every request; BlueTide's inputs cached per load |
+| 005 | Forecast | Recent selling rate × the category's monthly season index |
+| 006 | Lead times | Upper end of Dana's ranges; BlueTide PO dates corrected; late POs not counted until she dates them |
+| 007 | Sellable | Only stock she can sell today counts; on hold, damaged, expired and old ZZ stock shown, not counted |
+| 008 | Dana's knowledge | Her edits live in tables the loader never touches; every change audited |
+| 009 | Status, order at least | Order-up-to with lost sales floored; container rounding deferred |
+| 010 | Logging | Four layers: request logs, load runs and data notes, audit trail, prompt log |
+| 011 | No login | One user, fictional data; the name she types goes on every change |
+| 012 | Units | Each item planned in its selling unit; pounds per case from a checked table |
+| 013 | Demand dates | Demand dated by order date; open orders deducted on ship date, counted once |
+| 014 | Exclusions | Transfers, one-offs, samples and credits excluded by rule and seed files, not codes |
+| 015 | Migrations, RLS | Alembic migrations; RLS on every table, no policies; all access through the API |
+| 016 | Seasonality | Monthly index per category, in pounds, from active items, clamped to 0.4–2.5 |
+| 017 | Client files | Originals untouched; byte-identical working copies under distinct names |
+| 018 | Vendor types | Vendor classification in a seed file, not code |
+| 019 | Reading CSVs | Python's csv module, not pandas, so values stay exactly as exported |
+| 020 | Loads | One load, one transaction; raw rows kept per run; COPY from a laptop |
+| 021 | Late, unknown stock | Late POs and QA-HOLD in their own bucket, never counted |
+| 022 | Numbers | Floats inside the engine, exact decimals in the database |
+| 023 | API tests | SQLite copy of the real data with the real writer; code stays Postgres-first |
+| 024 | Screens v1 | Display choices the frontend makes, and the browser checks |
+| 025 | Colours, dropdowns | Red, yellow, green, grey only; every item a dropdown; units spelled out |
+| 026 | Direction | The app becomes the main record for POs and shipments, and can stand alone |
+| 027 | Her POs | Her records matched with BlueTide's by document and quantity (R1–R6) |
+| 028 | Shipments, moves | A ledger of picks and moves, matched with BlueTide's orders (R7–R10) |
+| 029 | Imports | Upload, check, then load: BlueTide's files or her own templates |
+| 030 | Downloads | One CSV per list, built from the screens' own code |
+| 031 | Harbor cost | Her cases per pallet, pallets per lot, $30 per pallet per month, a saved table |
 
 ---
 
 ## ADR-001 Stack: FastAPI + React + Supabase
-**Decision:** Python 3.12 / FastAPI / SQLAlchemy 2 / Alembic backend, React 18 + Vite + **TypeScript (strict)** frontend,
-Supabase Postgres. Typed end to end, with OpenAPI docs at `/docs`. **Decided by:** Ishan (stack). TypeScript confirmed by Ishan in Phase 0 (2026-11-25).
+**Date:** 2026-11-25 · **Decided by:** Ishan (stack, in planning: BUILD_PROMPT §4.2, §8.1). TypeScript confirmed by
+Ishan in Phase 0 (2026-11-25).
+
+**Context.** Nammu asked for a working app with a backend, to be explained and changed live in a review. Ishan is
+strongest in Python and React. Most of the work is data: cleaning seven messy exports and a planning engine, then a few
+screens.
+
+**Decision.** Python 3.12 / FastAPI / SQLAlchemy 2 / Alembic backend, React 18 + Vite + **TypeScript (strict)** frontend,
+Supabase Postgres. Typed end to end, with OpenAPI docs at `/docs`.
 **Versions (Phase 1, 2026-11-25; all pinned exactly):** Python 3.12.12, FastAPI 0.165, SQLAlchemy 2.1, Alembic 1.20,
 psycopg 3.3, Pydantic 2.14. React **18.3.1**, as the spec says, even though 19 is current: the spec asked for 18 and
 nothing we need requires 19. **TypeScript 5.9.3, not 7.0**: typescript-eslint 8.74 supports TS below 6.1 only. Vite 8,
 Tailwind CSS 4 (tokens live in CSS `@theme`, so there is no JS config), TanStack Query 5, React Router 7 in declarative mode.
 Tests use **httpx2**, because Starlette 1.x's TestClient deprecates plain httpx.
-Context / Alternatives / Tradeoffs / Revisit when: _to be written (BUILD_PROMPT §8.1)._
+
+**Alternatives.**
+- (a) Plain JavaScript frontend: less friction, but TypeScript catches API-shape mistakes before Dana sees them.
+  Asked in Phase 0; Ishan chose TypeScript.
+- (b) Node or Django backend: Node would mean one language, but Ishan's strength and the data work are Python. Django
+  brings an admin and templates we don't need; FastAPI gives typed request models and OpenAPI docs.
+- (c) A database without a dashboard (a SQLite file, a bare Postgres host): Supabase is real Postgres with a free tier
+  and a table viewer that helps in the review.
+
+**Tradeoffs.**
+- Two languages and two deployables. One Vercel project hides most of that (ADR-002).
+- The frontend's API types (`frontend/src/api/types.ts`) are written by hand to mirror `api/v1/schemas.py`, so a
+  change to a response means editing both.
+- Supabase's free tier pauses after about a week idle; a daily cron touches the database (ADR-002).
+
+**Revisit when.**
+- `types.ts` drifts from `schemas.py`: generate it from `/api/v1/openapi.json`.
+- A library we need requires React 19.
 
 ## ADR-002 Hosting: one Vercel project (website + API as two services), Supabase for the database
 **Date:** 2026-11-25 · **Decided by:** Ishan, in two steps. "Use Vercel, not Render" came first. Then "keep it simple,
@@ -75,75 +135,317 @@ the planning engine. RLS with no policies blocks Supabase's public Data API (ADR
 - Kestrel Bay outgrows the free tiers: Vercel Pro and Supabase Pro need no code changes.
 
 ## ADR-003 Raw JSONB layer + clean tables + data_issues
-**Decision:** Every CSV row is stored verbatim in `raw_rows` (JSONB), clean tables point back via `raw_row_id`, and
+**Date:** 2026-11-25 · **Decided by:** Ishan, in planning (BUILD_PROMPT §8.3, §13.3)
+
+**Context.** Every number on screen must trace back to a line in a BlueTide file ("it has to be right"). The exports
+hold 31 traps (DATA_AUDIT), so Dana and the reviewers will ask "where does this number come from, and what did you
+change?"
+
+**Decision.** Every CSV row is stored verbatim in `raw_rows` (JSONB), clean tables point back via `raw_row_id`, and
 every excluded, corrected or flagged row gets a `data_issues` row with its trap ID. Full traceability; the storage duplication
-is trivial at this size. _Full write-up to come (§8.3)._
+is trivial at this size. Since Phase 6 the raw layer also lets a website import reuse the last load's copy of any file
+Dana doesn't upload (ADR-029).
+
+**Alternatives.**
+- (a) One raw table per export with typed columns: a migration whenever an export changes, and typing "fixes" the very
+  values we need to see (trailing spaces, leading zeros, blanks).
+- (b) Keep only the clean tables: no way to show the original line or prove a cleaning step.
+- (c) Keep the CSV files on disk only: not queryable, and a clean row can't point at its line.
+
+**Tradeoffs.** The data is stored twice, plus about 16,500 raw rows and 4,000 data notes per load (fine at this size;
+ADR-020). JSONB values are untyped strings, so ad-hoc queries need casts.
+
+**Revisit when.** Loads become nightly (prune old runs), or raw data reaches millions of rows (move old runs to file
+storage).
 
 ## ADR-004 Pure planning engine, computed on request
-**Decision:** `planning/` takes dataclasses and returns dataclasses (no DB, clock or I/O) and runs per request. That takes
+**Date:** 2026-11-25 · **Decided by:** Ishan, in planning (BUILD_PROMPT §8.4, §13.3)
+
+**Context.** About 45 items, planned 182 days ahead. Dana's edits (a lead time, a PO date, "I've handled this") must
+change the screen at once, and every rule must be testable on tiny made-up examples.
+
+**Decision.** `planning/` takes dataclasses and returns dataclasses (no DB, clock or I/O) and runs per request. That takes
 milliseconds for about 30 items × 182 days. At thousands of items, move to a nightly precompute into `plan_results`.
 **Implemented 2026-11-26 (Phase 4):** `services/planning_inputs.inputs_from_db`. The BlueTide (clean-layer) inputs are cached in
 memory per latest load run id (they only change when the loader runs). Dana's app-layer edits are read fresh on every request,
-so an edit shows up immediately. The dashboard takes about 50 ms warm on the test database. _Full write-up to come (§8.4)._
+so an edit shows up immediately. The dashboard takes about 50 ms warm on the test database.
+
+**Alternatives.**
+- (a) Nightly precompute into a `plan_results` table: stale right after an edit, and one more job to run.
+- (b) Compute in SQL: hard to test rule by rule, and hard to explain.
+- (c) Cache the finished plan: every edit would have to invalidate it correctly. Caching only BlueTide's inputs, which
+  change only on a load, is safe.
+
+**Tradeoffs.** Every request recomputes the plan (about 60 ms for 45 items). Each Vercel instance keeps its own cache,
+so a cold instance rebuilds BlueTide's inputs on its first request.
+
+**Revisit when.** A request takes over 500 ms (§8.4), or the item count reaches the thousands: precompute nightly into
+`plan_results`.
 
 ## ADR-005 Forecast = recent level × category monthly seasonality
-**Decision:** It mirrors Dana's mental model ("October is slow, December won't be"), and it is robust to censored demand and
+**Date:** 2026-11-25 · **Decided by:** Ishan, in planning (BUILD_PROMPT §6.7, §13.3); Claude built the first model of it
+in the planning chat (§4.1)
+
+**Context.** Dana: "October is slow, December won't be, I adjust in my head." There is one year of sales history.
+Stockouts hide demand (T23; last December's 16/20 shrimp), and one-offs like the cruise-line order would distort a
+plain average.
+
+**Decision.** A day's forecast = the item's recent selling rate (last 8 weeks, stockout days removed), divided by that
+window's season index to get a normal-season level, times the category's index for that month (§6.7).
+It mirrors Dana's mental model ("October is slow, December won't be"), and it is robust to censored demand and
 one-offs. Limits: one year of data, monthly granularity, no trend detection.
-**Implemented 2026-11-26 (Phase 3):** `planning/seasonality.py` + `planning/demand.py`. Shrimp comes out 1.5× in Nov–Dec and Groundfish 1.4× in Feb and 2.0× in Mar (Lent), matching what Dana described. _Full write-up to come (§6.7)._
+**Implemented 2026-11-26 (Phase 3):** `planning/seasonality.py` + `planning/demand.py`. Shrimp comes out 1.5× in Nov–Dec and Groundfish 1.4× in Feb and 2.0× in Mar (Lent), matching what Dana described.
+
+**Alternatives.**
+- (a) A plain 8-week average: misses the December jump, which is how SHR-1620 ran out last year.
+- (b) Last year's same weeks: one year is noisy, and stockout weeks show zero.
+- (c) Statistical or ML forecasting (Holt-Winters, Prophet): needs 2+ years of data and can't be explained in a
+  sentence (P2, BUILD_PROMPT §11.3).
+
+**Tradeoffs.** The forecast steps on the 1st of each month, can't see a trend, and rests on one year of data. Items in
+a category share its seasonal shape.
+
+**Revisit when.** There are 2+ years of history, a clear trend appears, or Dana disagrees with a month's index.
 
 ## ADR-006 Conservative lead times and ETA re-derivation
-**Decision:** Use the upper end of Dana's ranges. Never trust a BlueTide PO date earlier than the real lead time allows.
+**Date:** 2026-11-25 · **Decided by:** Ishan, in planning (BUILD_PROMPT §6.5, §6.6, §13.3); the late-PO rule changed by
+Dana's reply (2026-11-26)
+
+**Context.** Dana gave ranges on the call ("10 to 12 weeks" from Vietnam). BlueTide's lead-time field is stale (8 weeks
+for Bien Xanh), and its PO dates were computed with it: the 600-case SHR-1620 PO shows Dec 28 but can't land before
+about Jan 25. Three POs are past their date with nothing received.
+
+**Decision.** Use the upper end of Dana's ranges. Never trust a BlueTide PO date earlier than the real lead time allows.
 A stockout costs more than overstock. See also A18 (late means on or before AS_OF).
+Each open line arrives on Dana's date if she set one, else on the later of BlueTide's date and order date + the real
+lead time (§6.6).
 **Updated 2026-11-26 (Dana's reply, A03):** a late PO is no longer assumed to arrive in 7 days. It is **not counted as
 coming** until Dana types a real date, stays flagged, and items that only a late PO would cover are called out. This is
 even more conservative than the original rule, and it's what the customer asked for. The knob is
-`late_po_assumed_days` (None = don't count). _Full write-up to come (§6.5, §6.6)._
+`late_po_assumed_days` (None = don't count).
+
+**Alternatives.**
+- (a) Trust BlueTide's dates: hides the SHR-1620 stockout, last December's failure again.
+- (b) The middle of each range (11 weeks for Vietnam): less safe, and running out is Dana's worst case.
+- (c) Assume late POs arrive within a week (the email default): rejected by Dana.
+
+**Tradeoffs.** Some items look more urgent than BlueTide suggests, and orders go in a little early (more stock to keep,
+possibly at Harbor). Late POs stay out of the plan until Dana types a date.
+
+**Revisit when.** The app holds enough of Dana's own receipts to measure each supplier's real lead time, or a supplier
+confirms a faster route.
 
 ## ADR-007 Sellable definition, and what is shown but not counted
-**Decision:** Sellable means latest snapshot, sellable location, qty > 0, not expired, active item, plus negative ADJ lines.
-On hold, damaged, expired and legacy stock is shown separately and never added in. _Full write-up to come (§6.1)._
+**Date:** 2026-11-25 · **Decided by:** Ishan, in planning (BUILD_PROMPT §6.1, §13.3), from Walt's rule on the call
+
+**Context.** Walt: "If I can't sell it, it isn't inventory." BlueTide's on-hand file mixes sellable stock with QA-HOLD,
+DAMAGED, expired lots, old ZZ items and two nights of counts (T01, T05, T11, T14).
+
+**Decision.** Sellable means latest snapshot, sellable location, qty > 0, not expired, active item, plus negative ADJ lines.
+On hold, damaged, expired and legacy stock is shown separately and never added in.
+Since Phase 6 the lots also include Dana's receipts, moves and stock counts, under the same rule (ADR-027 to ADR-029).
+QA-HOLD sits in the late-or-unknown bucket (ADR-021).
+
+**Alternatives.**
+- (a) BlueTide's total on hand: overstates what she can sell (today 420 cases on hold, 20 damaged, 78 expired and 59
+  of old ZZ stock).
+- (b) Drop the rest from view: Dana asked to see the stock on hold (email Q4), and expired stock is money to write off.
+
+**Tradeoffs.** An item can show as short while cases sit on hold that may pass. The summary's "Not counted" line keeps
+them in sight.
+
+**Revisit when.** Dana wants a "what if the hold clears" view (P1 #3), or a building changes role (`locations.csv`).
 
 ## ADR-008 Dana's knowledge stored separately from BlueTide data
-**Decision:** App-layer tables (`vendor_settings`, `item_settings`, `po_eta_overrides`, `handled_flags`) are never
-truncated by the loader. The UI shows "BlueTide says / you say", and every change is audited. _Full write-up to come (§8.3)._
+**Date:** 2026-11-25 · **Decided by:** Ishan, in planning (BUILD_PROMPT §8.3, §13.3)
+
+**Context.** The loader rebuilds BlueTide's tables on every load. Dana's knowledge (real lead times, real PO dates,
+"I've handled this", per-item settings) must survive every reload, and she should see where a number came from.
+
+**Decision.** App-layer tables (`vendor_settings`, `item_settings`, `po_eta_overrides`, `handled_flags`) are never
+truncated by the loader. The UI shows "BlueTide says / you say", and every change is audited.
+Since Phase 6 the app layer also holds her own records (POs, shipments, stock moves, imports, the Harbor table; CLAUDE.md
+invariant 5). `APP_LAYER` in `models.py` and a test keep foreign keys into BlueTide's tables out.
+
+**Alternatives.**
+- (a) Columns on BlueTide's tables: wiped on every load.
+- (b) Write her changes back into the CSVs: the raw files never change (invariant 2), and BlueTide wouldn't see them.
+
+**Tradeoffs.** Every read merges two sources (`services/planning_inputs.py`). Codes are plain text with no foreign keys,
+so a code BlueTide drops leaves her record pointing at nothing; the import check lists those (ADR-029).
+
+**Revisit when.** BlueTide is retired (ADR-026). The app layer is then the only record, and BlueTide's tables become an
+import area.
 
 ## ADR-009 Statuses and "order at least"
-**Decision:** Order-up-to logic with lost-sales flooring before the new order arrives. Explainable rather than statistically
+**Date:** 2026-11-25 · **Decided by:** Ishan, in planning (BUILD_PROMPT §6.8, §6.9, §13.3)
+
+**Context.** Dana makes the final call on quantities (she orders by phone and email). She needs "by when, and at least
+how much", in numbers she can check against her own sense.
+
+**Decision.** Order-up-to logic with lost-sales flooring before the new order arrives. Explainable rather than statistically
 optimal. Container and minimum-order rounding is deferred to P1.
-**Implemented 2026-11-26:** the shortage message ends when stock really comes back. That's an earlier PO if one lands first (SHR-1620: Dec 10 → Jan 25, not the new order's Feb 8). When ordering today can't close the gap, the explanation says so instead of showing a confusing "order at least 0". _Full write-up to come (§6.8, §6.9)._
+The status compares the run-out date with the lead time and cushion: too late, order this week (order-by within 7
+days), order soon (within 21), fine. "Order at least" covers until the next Monday order's arrival plus the cushion;
+sales lost during a stockout aren't added back (§6.8, §6.9).
+**Implemented 2026-11-26:** the shortage message ends when stock really comes back. That's an earlier PO if one lands first (SHR-1620: Dec 10 → Jan 25, not the new order's Feb 8). When ordering today can't close the gap, the explanation says so instead of showing a confusing "order at least 0".
+
+**Alternatives.**
+- (a) Statistical safety stock or EOQ: needs demand variability and ordering costs we don't have, and is hard to explain.
+- (b) "Order N weeks of supply": ignores stock already on the way.
+- (c) A status with no quantity: Dana asks how much.
+
+**Tradeoffs.** No container or minimum-order rounding (P1 #6), so the number is a floor, labelled "Order at least".
+
+**Revisit when.** Supplier minimums or container sizes are known, or Dana's real orders differ from the suggestion week
+after week.
 
 ## ADR-010 Four-layer logging
-**Decision:** (1) JSON app logs plus `request_log`/`event_log`, (2) `load_runs` + `data_issues` + DATA_LOAD_REPORT,
-(3) `audit_log` in the same transaction as every write, (4) `docs/PROMPT_LOG.md`. **Decided by:** Ishan ("log everything"); Claude proposed the four layers. _Full write-up to come (§10)._
+**Date:** 2026-11-25 · **Decided by:** Ishan ("log everything"); Claude proposed the four layers (BUILD_PROMPT §4.2, §10).
+
+**Context.** Ishan asked to log everything. Reviewers and Dana need to see what was cleaned and who changed what, and
+Ishan needs a record of how AI was used.
+
+**Decision.** (1) JSON app logs plus `request_log`/`event_log`, (2) `load_runs` + `data_issues` + DATA_LOAD_REPORT,
+(3) `audit_log` in the same transaction as every write, (4) `docs/PROMPT_LOG.md`.
+The audit row commits with the change, so the two can't disagree. The Data and Activity pages show layers 2 and 3.
+
+**Alternatives.**
+- (a) A hosted logging service (Sentry, Datadog): another account and secret, and Dana couldn't see it.
+- (b) App logs only: no record per row of what the loader changed, and no record of who changed what.
+- (c) Audit rows written after the commit: could miss a change, or record one that rolled back.
+
+**Tradeoffs.** Our tables grow with every request and every load (pruning is a later step, ADR-020). Vercel keeps its
+runtime logs only briefly, so these tables are the lasting record.
+
+**Revisit when.** `request_log` gets large (prune or sample it), or the app is in daily use (add error alerts).
 
 ## ADR-011 No auth in v1
-**Decision:** Fictional data and a single user. The `X-Actor` header (default "Dana") feeds the audit trail. _Full write-up to come._
+**Date:** 2026-11-25 · **Decided by:** Ishan, in planning (BUILD_PROMPT §8.5, §11.3, §13.3)
+
+**Context.** The data is fictional and there is one user, Dana. The review is a live demo, where a login screen only
+gets in the way. The audit trail still needs a name on every change.
+
+**Decision.** Fictional data and a single user. The `X-Actor` header (default "Dana") feeds the audit trail.
+The website asks "Who's using this?" once, keeps the name in the browser (`kestrel-bay.actor`), and sends it with every
+request.
+
+**Alternatives.**
+- (a) Supabase Auth or a passcode: friction in the demo. A simple passcode is P1 #9.
+- (b) No name at all: the audit trail couldn't say who made a change.
+
+**Tradeoffs.** Anyone with the link can see and change the data, and the name is self-reported, not proof. The database
+itself is closed to the public (ADR-015).
+
+**Revisit when.** Real data goes in, or a second person (Walt, Marco) uses the app: add logins and roles.
 
 ## ADR-012 Plan in each item's selling unit, with a human-verified pack-size table
-**Decision:** Every item is planned in its own `sell_uom` (CS or LB). Conversions use `data/reference/pack_sizes.csv`,
-and a regex is used only to validate that table, never at runtime. _Full write-up to come (§6.3)._
+**Date:** 2026-11-25 · **Decided by:** Ishan, in planning (BUILD_PROMPT §6.3, §13.3)
+
+**Context.** Items are sold in cases or pounds, and BlueTide exports some lots of case items in pounds (T10). Pack
+sizes are free text ("6x2.2lb", "10#", "5kg", "catch wt"; T09).
+
+**Decision.** Every item is planned in its own `sell_uom` (CS or LB). Conversions use `data/reference/pack_sizes.csv`,
+and a regex is used only to validate that table, never at runtime.
+On every load the parser checks the table against BlueTide's pack text and flags a new or changed one (T09).
+
+**Alternatives.**
+- (a) Plan everything in pounds: Dana thinks and orders in cases for case items.
+- (b) Parse the pack text at runtime: a new format would silently give a wrong number.
+
+**Tradeoffs.** A new item needs a row in `pack_sizes.csv`, or pounds per case on her own item (Phase 6). Until then its
+pound lots aren't counted, and that's flagged. Mixed-unit categories are added up in pounds for seasonality (ADR-016).
+
+**Revisit when.** BlueTide or her own item list gives pounds per case reliably for every item.
 
 ## ADR-013 Demand dated by order date; open orders deducted by ship date
-**Decision:** See A11. This is slightly early (conservative) for pre-booked orders.
+**Date:** 2026-11-25 · **Decided by:** Ishan, in planning (BUILD_PROMPT §6.2, §13.3); changed by Ishan on 2026-11-26 (A23)
+
+**Context.** Customers order days or weeks before the ship date, and holiday orders are booked early (T22). The
+questions are when demand "happens", and how to avoid counting an open order twice.
+
+**Decision.** Past demand is dated by the customer's order date, when the need exists. Open orders come off stock on
+their ship date. See A11. This is slightly early (conservative) for pre-booked orders.
 **Changed 2026-11-26 (Ishan, A23): open orders are counted once.** They are deducted on their ship date and no longer also feed
 the selling rate. Every past order shipped within 3 days, but this week's open orders are holiday pre-bookings, so counting
 them in the rate as well double-counted December. It inflated SHR-1620's rate 47% and moved the holiday bump into November.
 Holiday protection comes from the December seasonal index (shrimp 1.6×), the real 12-week lead time and order-by dates,
 not from double counting. SHR-1620 is still too late (Dec 14), planning 542 cs for December vs last December's ~487 cs pace.
-Extra margin, if wanted, comes from the per-item cushion. Switch: `open_orders_in_selling_rate`. _Full write-up to come (§6.2)._
+Extra margin, if wanted, comes from the per-item cushion. Switch: `open_orders_in_selling_rate`.
+
+**Alternatives.**
+- (a) Date demand by ship date: pre-booked demand stays hidden until it ships.
+- (b) Count open orders in the selling rate and deduct them too (BUILD_PROMPT §6.2 as written): double counts the
+  holiday bookings. Rejected by Ishan (A23).
+
+**Tradeoffs.** A big early booking pulls a little demand forward in the history. Holiday margin comes from the season
+index and the cushion, not from counting twice.
+
+**Revisit when.** "Today" moves to the real date (new sales then feed the rate), or customers start booking months
+ahead as a habit.
 
 ## ADR-014 Exclusions by rule and seed data, not hard-coded names
-**Decision:** Transfers are excluded by customer type INTERNAL, and one-offs by `data/reference/excluded_orders.csv`
-(so if the cruise line returns, its new orders count). _Full write-up to come (§6.2)._
+**Date:** 2026-11-25 · **Decided by:** Ishan, in planning (BUILD_PROMPT §6.2, §13.3)
+
+**Context.** BlueTide records moves between buildings as sales to an internal customer (T16), $0 samples (T17),
+credits as negative sales (T18), and a one-time cruise-line order (T20). Invariant 4 forbids item, order or customer
+codes in logic.
+
+**Decision.** Transfers are excluded by customer type INTERNAL, and one-offs by `data/reference/excluded_orders.csv`
+(so if the cruise line returns, its new orders count).
+Every sale is classified in a fixed order: cancelled, transfer, credit, sample, one-off, fresh, else real demand
+(`loader/classify.py`, §6.2). Dana's own shipped orders go through the same classifier (ADR-028).
+
+**Alternatives.**
+- (a) Hard-code the cruise line's customer or order numbers: breaks invariant 4, and its future orders would be
+  ignored forever.
+- (b) Match customer names as text: fragile.
+
+**Tradeoffs.** A new one-off needs a row in `excluded_orders.csv` and a laptop load (the website import uses the last
+load's copy of the seeds, ADR-029).
+
+**Revisit when.** One-offs become common: let Dana mark an order as a one-off in the app.
 
 ## ADR-015 Alembic migrations + RLS on with no policies; all access via the API
-**Decision:** RLS on every table with no policies blocks Supabase's auto-generated Data API. The backend connects as
-the postgres role through the session pooler. _Full write-up to come (§8.3)._
+**Date:** 2026-11-25 · **Decided by:** Ishan, in planning (BUILD_PROMPT §8.3, §13.3)
+
+**Context.** Supabase publishes every table through its public Data API unless RLS blocks it. The browser must never
+hold database keys (ADR-002). Schema changes must be repeatable on the laptop, in tests and on production.
+
+**Decision.** RLS on every table with no policies blocks Supabase's auto-generated Data API. The backend connects as
+the postgres role through the session pooler (migrations and laptop loads) or the transaction pooler (the deployed
+API, ADR-002).
+Migrations 0001 to 0005 each list their tables in `ALL_TABLES` and enable RLS on them;
+`tests/unit/test_invariants.py` checks that every table is covered.
+
+**Alternatives.**
+- (a) RLS policies and a browser client: database access in the browser, and validation and audit written twice.
+- (b) Tables made by hand in the Supabase dashboard: not repeatable, no history.
+- (c) `create_all` only: no upgrades for a live database (it's used only for test databases, ADR-023).
+
+**Tradeoffs.** Every new table must turn RLS on in its migration (the test catches a miss). The API is the only way in.
+
+**Revisit when.** Another client (a mobile app, a BlueTide feed) needs direct access, or real logins arrive (then
+policies per user).
 
 ## ADR-016 Category-level seasonality with clamping
-**Decision:** Monthly indices per normalized category from active items only, clamped to [0.4, 2.5]. Single-item
+**Date:** 2026-11-25 · **Decided by:** Ishan, in planning (BUILD_PROMPT §6.7, §13.3); refined in Phase 3 (A26)
+
+**Context.** Some categories have only one active item (Squid, Scallops), so one stockout or one big order swings a
+month. Categories also mix case and pound items.
+
+**Decision.** Monthly indices per normalized category from active items only, clamped to [0.4, 2.5]. Single-item
 categories (Squid, Scallops) are noisy; shrinkage toward the overall index is a future step.
-**Refined 2026-11-26 (A26):** a category's rate is summed **in pounds** (case items × verified lb per case). Groundfish (pollock blocks in lb, cod in cases) and Salmon (sides in lb, portions in cases) mix units; summing raw rates as §6.7 literally says would let the pound items set the pattern. _Full write-up to come (§6.7)._
+**Refined 2026-11-26 (A26):** a category's rate is summed **in pounds** (case items × verified lb per case). Groundfish (pollock blocks in lb, cod in cases) and Salmon (sides in lb, portions in cases) mix units; summing raw rates as §6.7 literally says would let the pound items set the pattern.
+
+**Alternatives.**
+- (a) A season index per item: one year of one item is noise.
+- (b) One index for all seafood: misses Lent for groundfish and Christmas for shrimp.
+- (c) Shrinkage toward the overall index: better for small categories, harder to explain. The noted next step.
+
+**Tradeoffs.** The clamp can flatten a truly extreme month (none in this data). One-item categories stay noisy.
+
+**Revisit when.** There are 2+ years of history, or Dana disputes a category's month.
 
 ---
 
@@ -271,13 +573,22 @@ behaviour in one line.
 ## ADR-022 Floats inside the engine, Decimals at the edges
 **Date:** 2026-11-26 · **Decided by:** Claude (announced at the Phase 2 stop; no objection)
 
+**Context.** BlueTide's quantities and money are exact (cases, pounds, dollars), and BUILD_PROMPT §16 warns about
+float drift on pound quantities. The engine works with rates, season indices and forecasts, which are estimates.
+
 **Decision.** The database and loader keep exact `NUMERIC`/`Decimal` quantities and money. The planning engine converts to
 float at its boundary (`services/planning_inputs.py`), because rates, seasonal indices and forecasts are estimates by
 nature. "Order at least" and shortfalls are rounded **up** with a 1e-9 tolerance, so 259.9999999 isn't shown as 260 and
 260.0000001 doesn't become 261. Display rounds to whole cases/pounds.
 
+**Alternatives.**
+- (a) Decimal everywhere in the engine: verbose and slower, with no gain for estimates.
+- (b) Floats in the database too: stored quantities and money would drift.
+
 **Tradeoffs.** No exact-decimal guarantees inside forecasts, which is irrelevant at this precision. Tests compare with
 `pytest.approx`.
+
+**Revisit when.** Engine output is stored or billed as money (for example PO totals): keep that path in Decimal.
 
 ## ADR-023 API tests run on SQLite with the real loader writer; the code stays Postgres-first
 **Date:** 2026-11-26 · **Decided by:** Claude (Phase 4), flagged to Ishan
@@ -335,6 +646,11 @@ the data notes, and check the Activity log lists each change.
 **Alternatives.** Plot the raw negative balance (confusing: "-600 cs"); hard-code season dates in the frontend
 (a second source of business dates); a UI component library (more weight for a handful of dialogs and toasts).
 
+**Tradeoffs.**
+- The browser checks run from a scratch folder, not in CI, so they only run when someone runs them.
+- Sentence case can mis-case an unusual name; the item code is always next to it.
+- The item page takes a moment longer the first time it opens.
+
 **Revisit when.** Dana asks to see the shortfall on the chart itself (e.g. a "short by" line below zero), or the
 browser checks move into CI.
 
@@ -372,8 +688,18 @@ chip, how many items, and one line on what it means; inside is the grid of cards
 `group/disclosure`, ...). A shared `group` makes a parent's open or hover state leak into everything inside it (the
 bubble bug, #28, and closed cards showing "Close", #29).
 
+**Alternatives.**
+- (a) BUILD_PROMPT §9.1's signal-flag palette: Ishan found it random.
+- (b) One long table of every item: dense, but wide rows and the same scrolling problem. Ishan asked for dropdowns.
+
+**Tradeoffs.** Order this week and order soon are both yellow (solid and light), so the words and icon carry the
+difference. Details are one click away instead of on screen.
+
+**Revisit when.** Dana mixes up the two yellows, or needs to compare many items side by side (the order-list download
+covers that today, ADR-030).
+
 ## ADR-026 Direction: the app becomes the main record for POs and shipments
-**Date:** 2026-11-26 · **Decided by:** Ishan · **Status:** direction decided; the design (Phase 6) is waiting for "go"
+**Date:** 2026-11-26 · **Decided by:** Ishan · **Status:** direction decided; built in Phase 6 (ADR-027 to ADR-030)
 
 **Context.** Ishan: "This is an ERP system ... It is supposed to be a system that Dana can use for the future as well.
 She needs to be able to log and track stuff." The build so far only analyses one load of BlueTide exports, because
@@ -388,6 +714,16 @@ BlueTide for these ... the design should lean towards replacing BlueTide. The ap
 the BlueTide tables (the loader TRUNCATEs those). Where both have the same PO or order number, the app's record wins and
 the difference is flagged. Business "today" has to move forward with new data (a decision for Ishan in the Phase 6
 plan). The Harbor storage calculator (P1 #1) and the README / demo phase move after this work.
+
+**Alternatives.**
+- (a) Stay a read-only tool over BlueTide's exports (BUILD_PROMPT §11.3 kept creating POs out of scope, to avoid a
+  second source of truth): Ishan chose otherwise.
+- (b) Replace BlueTide at once: Kestrel Bay still runs BlueTide, so the app has to work on top of it during the switch.
+
+**Tradeoffs.** During the switch the same POs and orders live in two places, so the matching rules (R1–R10) and their
+flags are needed. More to build and test. With "today" fixed at Nov 16, new records don't move the selling rate yet.
+
+**Revisit when.** BlueTide is retired (drop its imports), or "today" switches to the real date.
 
 ## ADR-027 Dana's own records, matched with BlueTide's by document and quantity (rules R1-R6)
 **Date:** 2026-11-26 · **Decided by:** Ishan (plan approved, with "independent of BlueTide"); design by Claude after
@@ -425,6 +761,17 @@ still work when BlueTide files keep coming, and (Ishan, on approval) must work w
   "no recent sales" until then.
 - An app PO does not revive a dormant BlueTide item (dormant is set at load time).
 
+**Alternatives.**
+- (a) A date cut-off ("ignore anything before BlueTide's last count"): BlueTide's received quantity has no date, so it
+  miscounts (the design review found four ways).
+- (b) BlueTide always wins: her records would be overwritten on every load, against ADR-026.
+- (c) The app always wins, receipts included: Ishan chose that BlueTide's receipt wins (R4).
+
+**Tradeoffs.** More rules to explain (R1–R6 here, R7–R10 in ADR-028), each with its own test. Conflicts are flagged
+for Dana, not settled silently.
+
+**Revisit when.** BlueTide exports receipt dates (a date rule becomes safe), or BlueTide is retired.
+
 ## ADR-028 Orders going out and stock moves: a ledger of picks, matched with BlueTide's orders (R7-R10)
 **Date:** 2026-11-26 · **Decided by:** Ishan (Phase 6 plan, step 2 "go"); design by Claude
 
@@ -455,6 +802,17 @@ also has the order, and keep working with no BlueTide data.
 - With "today" fixed at Nov 16, new sales are outside the 8-week selling-rate window: they change stock and promised
   orders, not the selling rate, until "today" moves (ADR-026 follow-up).
 - Shipping is all-or-nothing per order (no partial shipments yet).
+
+**Alternatives.**
+- (a) Edit a lot's quantity in place: no history and no undo.
+- (b) Take shipments off item totals instead of lots: loses expiry dates, which the six-month line and the stuck list
+  need.
+- (c) Let a pick take a lot below zero: the planner drops negative lots silently (`planning/supply.py`), so the extra
+  cases would never come off stock (R10).
+
+**Tradeoffs.** The ledger only grows (undo adds rows). Moves must be dated after BlueTide's count.
+
+**Revisit when.** Partial shipments are needed, or a scanner or warehouse system reports picks.
 
 ## ADR-029 Imports from the website: check first, then load; BlueTide's files or Dana's own templates
 **Date:** 2026-11-26 · **Decided by:** Ishan (Phase 6 plan, step 3 "go"; "it should be able to be its own independent
@@ -498,8 +856,18 @@ connection (the transaction pooler) has no COPY, and Vercel caps a request at 4.
 open customer orders aren't in the sales-history template (they're logged on the Shipments page); a file over
 4.4 MB must be split.
 
+**Alternatives.**
+- (a) Keep loads laptop-only: Dana couldn't do it herself.
+- (b) A session-pooler secret on Vercel so COPY works: one more secret; batched inserts load in about 6 seconds live.
+- (c) All files in one request: over Vercel's 4.5 MB limit.
+- (d) Load straight away with no check: a wrong file would replace good data.
+
+**Tradeoffs.** Changing a seed still needs a laptop load. One bad row blocks a whole template import (A44).
+
+**Revisit when.** Files grow past the limit (upload straight to storage), or BlueTide gets an API (a nightly feed).
+
 ## ADR-030 Download to Excel: one CSV per list, built from the screens' own code
-**Date:** 2026-11-27 · **Decided by:** Ishan (Phase 6 plan, step 4 "go"); details by Claude
+**Date:** 2026-11-26 · **Decided by:** Ishan (Phase 6 plan, step 4 "go"); details by Claude
 
 **Context.** Dana works in Excel and forwards lists to people who don't use the app. She needs the order list, the
 stuck list, the POs, the shipments and the data notes as files.
@@ -527,6 +895,17 @@ stuck list, the POs, the shipments and the data notes as files.
 
 **Known limits.** CSV, not .xlsx (no formatting or several sheets). Downloads aren't recorded in the activity log
 (they change nothing; the request log has them).
+
+**Alternatives.**
+- (a) A formatted .xlsx: a new dependency for formatting nobody asked for; a CSV opens in Excel as is.
+- (b) Download only what's filtered on screen: rows would be silently missing (A46).
+- (c) Build the file in the browser: a second copy of the formatting rules, and a page doesn't hold every row (data
+  notes load a page at a time).
+
+**Tradeoffs.** No formatting, formulas or several sheets. Excel guesses each column's type (fine for ISO dates and
+plain numbers).
+
+**Revisit when.** Dana asks for formatting, or several lists in one file.
 
 ## ADR-031 Harbor storage cost: Dana's cases per pallet, pallets per lot, and her own saved table
 **Date:** 2026-11-26 · **Decided by:** Ishan (prompt #17: "a harbor storage costs calculator ... they can input how
@@ -560,3 +939,15 @@ the cost of the stock sitting there was hidden (A16). Walt: "Long stock sitting 
 
 **Known limits.** One rate for every paid warehouse (only Harbor today). No "cost so far": BlueTide's received date
 isn't the date a lot reached Harbor (T30). No cost per item on Monday's stuck list yet.
+
+**Alternatives.**
+- (a) The rate and cases per pallet in the seed files (`locations.csv`, `pack_sizes.csv`; the old playbook row):
+  every change needs a laptop load, and Dana can't edit them.
+- (b) Pallets from each item's total cases: a lower number, but lots aren't mixed on a pallet.
+- (c) A typical cases per pallet for every item: an invented number.
+
+**Tradeoffs.** The total is only as complete as the numbers she types. Rounding each lot up errs high (A47). Saved rows
+are snapshots and don't follow later stock changes.
+
+**Revisit when.** Harbor's invoice shows a different pallet count (check the rule against it), a second paid warehouse
+appears (a rate per location), or someone can supply real pallet counts.
