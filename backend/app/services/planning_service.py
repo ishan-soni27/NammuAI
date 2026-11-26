@@ -241,6 +241,7 @@ def item_detail(session: Session, rules: BusinessRules, raw_code: str) -> s.Item
                 item_code=code,
                 lifecycle_override=settings.lifecycle_override,
                 safety_days_override=settings.safety_days_override,
+                cases_per_pallet=settings.cases_per_pallet,
                 note=settings.note,
                 updated_at=settings.updated_at,
                 updated_by=settings.updated_by,

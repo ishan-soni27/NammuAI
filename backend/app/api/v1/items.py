@@ -28,7 +28,7 @@ from app.db import models as m
 from app.db.session import get_db
 from app.db.sql import utc_now
 from app.errors import AppError
-from app.services import planning_service, presenters, records_service
+from app.services import harbor_service, planning_service, presenters, records_service
 from app.services.audit import current_actor, record_change
 
 router = APIRouter(tags=["Monday screen and items"])
@@ -159,6 +159,8 @@ def update_item_settings(
             "out_of_range",
             f"Cushion must be between {rules.setting_days_min} and {rules.setting_days_max} days.",
         )
+    if "cases_per_pallet" in sent and body.cases_per_pallet is not None:
+        harbor_service.check_cases_per_pallet(body.cases_per_pallet, rules)
     setting = db.get(m.ItemSetting, code)
     before = None
     if setting is None:
@@ -190,12 +192,7 @@ def update_item_settings(
 
 
 def _setting_dict(setting: m.ItemSetting) -> dict:
-    return {
-        "item_code": setting.item_code,
-        "lifecycle_override": setting.lifecycle_override,
-        "safety_days_override": setting.safety_days_override,
-        "note": setting.note,
-    }
+    return harbor_service.item_setting_dict(setting)
 
 
 @router.get("/item-details", response_model=list[s.AppItemOut])

@@ -258,6 +258,7 @@ class ItemSettingsOut(BaseModel):
     item_code: str
     lifecycle_override: str | None
     safety_days_override: int | None
+    cases_per_pallet: int | None = None
     note: str | None
     updated_at: datetime | None
     updated_by: str | None
@@ -352,7 +353,79 @@ class ItemSettingsPatchIn(BaseModel):
 
     lifecycle_override: Literal["active", "dormant", "discontinued"] | None = None
     safety_days_override: int | None = None
+    cases_per_pallet: int | None = None  # for Harbor storage cost (ADR-031)
     note: str | None = Field(default=None, max_length=500)
+
+
+# ---- Harbor storage (P1 #1; ADR-031) ------------------------------------------------------------
+
+
+class HarborLotOut(BaseModel):
+    lot_no: str
+    location_name: str
+    cases: float
+    expiry_date: date | None
+
+
+class HarborItemOut(BaseModel):
+    """One item's stock at Harbor now, and its cost a month once cases per pallet is known."""
+
+    item_code: str
+    description: str
+    sell_uom: str
+    cases: float
+    lots: list[HarborLotOut]
+    cases_per_pallet: int | None
+    pallets: int | None
+    cost_per_month: float | None
+    stuck_tag: str | None  # why its Harbor stock is on the stuck list, if it is
+    unconverted_lots: int  # sold by the pound with no pounds per case: can't be put on pallets
+
+
+class HarborTotalsOut(BaseModel):
+    items: int
+    cases: float
+    priced_items: int  # items with cases per pallet (the only ones in pallets and cost)
+    pallets: int
+    cost_per_month: float
+
+
+class HarborRowOut(BaseModel):
+    """A calculation Dana saved to her table, exactly as worked out."""
+
+    id: int
+    kind: Literal["at_harbor", "what_if"]
+    as_of_date: date
+    item_code: str
+    description: str
+    cases: float
+    lots: int
+    cases_per_pallet: int
+    pallets: int
+    rate_per_pallet_month: float
+    cost_per_month: float
+    created_at: datetime
+    created_by: str
+
+
+class HarborOut(BaseModel):
+    as_of: date
+    rate_per_pallet_month: float
+    cases_per_pallet_max: int
+    location_names: list[str]
+    items: list[HarborItemOut]
+    totals: HarborTotalsOut
+    saved: list[HarborRowOut]
+
+
+class HarborRowIn(BaseModel):
+    item_code: str = Field(min_length=1, max_length=60)
+    cases_per_pallet: int
+    cases: float | None = Field(default=None, gt=0)  # None = what's at Harbor now; a number = a what-if
+
+
+class HarborRowsIn(BaseModel):
+    rows: list[HarborRowIn] = Field(min_length=1, max_length=500)
 
 
 # ---- Data notes, activity, settings ----------------------------------------------------------------

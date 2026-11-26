@@ -87,6 +87,19 @@ class BusinessRules:
         source="Walt 00:03:30: 'Long stock sitting at Harbor is the worst case.' "
         "Threshold is assumption A14.",
     )
+    harbor_pallet_cost_per_month: float = _rule(
+        30.0,
+        unit="dollars per pallet per month",
+        doc="What Harbor Cold Storage charges to keep one pallet for a month. The Harbor page turns "
+        "cases into pallets with the cases per pallet Dana types for each item.",
+        source="Dana's reply, 2026-11-26 (P.S.): 'Harbor charges $30 per pallet per month.' (A16)",
+    )
+    cases_per_pallet_max: int = _rule(
+        1000,
+        unit="cases",
+        doc="Largest number of cases per pallet Dana can type, to catch a typo like 6000 for 60.",
+        source="Assumption A48: a typo guard, far above any pallet of frozen seafood cases.",
+    )
 
     # ---- How BlueTide marks things (labels from the call; used by the loader) ------------
     # Not numbers, but business facts all the same: kept here so no code or prefix is

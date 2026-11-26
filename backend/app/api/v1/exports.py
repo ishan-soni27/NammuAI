@@ -1,6 +1,7 @@
 """Download to Excel (Phase 6 step 4; P0 #13).
 
-GET /exports/{name}.csv   name: order-list | stuck-list | purchase-orders | shipments | data-notes
+GET /exports/{name}.csv   name: order-list | stuck-list | purchase-orders | shipments | data-notes |
+                          harbor-storage
 
 UTF-8 with a byte-order mark, dates as YYYY-MM-DD, numbers without units and a unit column, statuses
 in Dana's words. Built from the same services as the screens (services/export_service.py).

@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from app.config.business_rules import BusinessRules
 from app.db import models as m
 from app.loader.report import TRAP_TITLES
-from app.services import planning_service, records_service, shipments_service
+from app.services import harbor_service, planning_service, records_service, shipments_service
 from app.services.planning_inputs import latest_load
 
 STATUS_WORDS = {
@@ -313,10 +313,48 @@ def data_notes(db: Session, rules: BusinessRules) -> str:
     return _csv(header, rows)
 
 
+def harbor_storage(db: Session, rules: BusinessRules) -> str:
+    """Dana's Harbor storage table (ADR-031), exactly as each row was worked out, newest first."""
+    header = [
+        "saved_for",
+        "saved_at_utc",
+        "saved_by",
+        "what",
+        "item_code",
+        "item",
+        "cases",
+        "lots",
+        "cases_per_pallet",
+        "pallets",
+        "dollars_per_pallet_month",
+        "dollars_per_month",
+    ]
+    what = {"at_harbor": "At Harbor that day", "what_if": "What-if amount"}
+    rows = (
+        [
+            r.as_of_date,
+            r.created_at.strftime("%Y-%m-%d %H:%M"),
+            r.created_by,
+            what.get(r.kind, r.kind),
+            r.item_code,
+            r.description,
+            float(r.cases),
+            r.lots,
+            r.cases_per_pallet,
+            r.pallets,
+            float(r.rate_per_pallet_month),
+            float(r.cost_per_month),
+        ]
+        for r in harbor_service.saved_rows(db)
+    )
+    return _csv(header, rows)
+
+
 EXPORTS: dict[str, Callable[[Session, BusinessRules], str]] = {
     "order-list": order_list,
     "stuck-list": stuck_list,
     "purchase-orders": purchase_orders,
     "shipments": shipments,
     "data-notes": data_notes,
+    "harbor-storage": harbor_storage,
 }

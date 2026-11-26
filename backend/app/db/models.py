@@ -416,11 +416,13 @@ class ItemSetting(Base):
             "safety_days_override IS NULL OR safety_days_override >= 0",
             name="safety_override_non_negative",
         ),
+        CheckConstraint("cases_per_pallet IS NULL OR cases_per_pallet > 0", name="cases_per_pallet_positive"),
     )
 
     item_code: Mapped[str] = mapped_column(primary_key=True)
     lifecycle_override: Mapped[str | None]
     safety_days_override: Mapped[int | None] = mapped_column(Integer)
+    cases_per_pallet: Mapped[int | None] = mapped_column(Integer)  # Dana's number, for Harbor storage cost
     note: Mapped[str | None]
     updated_at: Mapped[datetime] = _created_now()
     updated_by: Mapped[str]
@@ -741,6 +743,38 @@ class AppSalesLine(Base):
     created_by: Mapped[str]
 
 
+HARBOR_ROW_KINDS = ("at_harbor", "what_if")
+
+
+class HarborStorageRow(Base):
+    """A Harbor storage calculation Dana added to her table (P1 #1; ADR-031).
+
+    Kept exactly as worked out (rate included), so a later change to the rate or the stock
+    never rewrites what she saved. at_harbor = what was there that day (pallets per lot);
+    what_if = an amount she typed in."""
+
+    __tablename__ = "harbor_storage_rows"
+    __table_args__ = (
+        CheckConstraint(_in("kind", HARBOR_ROW_KINDS), name="kind"),
+        CheckConstraint("cases >= 0", name="cases_not_negative"),
+        CheckConstraint("cases_per_pallet > 0", name="cases_per_pallet_positive"),
+    )
+
+    id: Mapped[int] = _pk()
+    kind: Mapped[str]
+    as_of_date: Mapped[date]  # the business day it was worked out for
+    item_code: Mapped[str]
+    description: Mapped[str]
+    cases: Mapped[Decimal]
+    lots: Mapped[int] = mapped_column(Integer)
+    cases_per_pallet: Mapped[int] = mapped_column(Integer)
+    pallets: Mapped[int] = mapped_column(Integer)
+    rate_per_pallet_month: Mapped[Decimal]
+    cost_per_month: Mapped[Decimal]
+    created_at: Mapped[datetime] = _created_now()
+    created_by: Mapped[str]
+
+
 # =====================================================================================
 # LOGGING layer (continued)
 # =====================================================================================
@@ -860,5 +894,6 @@ APP_LAYER: tuple[str, ...] = (
     "stock_counts",
     "stock_count_lines",
     "app_sales_lines",
+    "harbor_storage_rows",
 )
 LOGGING_LAYER: tuple[str, ...] = ("load_runs", "data_issues", "audit_log", "event_log", "request_log")
