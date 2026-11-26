@@ -412,3 +412,34 @@ still work when BlueTide files keep coming, and (Ishan, on approval) must work w
 - A new item has no sales history until step 2 (shipments) or step 3 (her sales history upload), so it shows as
   "no recent sales" until then.
 - An app PO does not revive a dormant BlueTide item (dormant is set at load time).
+
+## ADR-028 Orders going out and stock moves: a ledger of picks, matched with BlueTide's orders (R7-R10)
+**Date:** 2026-11-26 · **Decided by:** Ishan (Phase 6 plan, step 2 "go"); design by Claude
+
+**Context.** Step 2 of ADR-026: Dana logs orders going out (and samples), ships them, and moves stock
+between buildings (Harbor costs money every month). The plan must count each case once whether or not BlueTide
+also has the order, and keep working with no BlueTide data.
+
+**Decision.**
+- **Tables** (migration 0003, app layer, RLS on): `app_customers` (BlueTide's customers table is rebuilt on every
+  load), `shipments` + `shipment_lines`; `stock_movements` gains `shipment_id`, `shipment_line_no` and `pair_id`.
+- **An order is promised while open** (an open `SaleInput` on its ship date). **Shipping writes picks** (negative
+  movements on named lots, soonest to expire first, shown before confirming and editable), and a shipped customer
+  order joins the selling-rate history if `loader/classify.classify_sale` calls it real demand (samples, credits,
+  one-offs and internal customers never are).
+- **Matching BlueTide's orders by order number + item** (`planning/records.reconcile_shipments`): R7 (BlueTide
+  invoiced, hers open: not counted again, flagged), R8 (hers shipped, BlueTide open: hers applies, counted once; both
+  open: hers, once; both shipped: BlueTide's count already has it out).
+- **Moves** are a paired out and in (`pair_id`); undo reverses both. R9: moves dated on or before BlueTide's stock
+  count are refused and ignored. **R10:** a pick larger than its lot takes the next lot to expire in the same
+  building; stock never goes below zero; any shortfall is flagged (`apply_movements`).
+- **Lots carry where they came from** (BlueTide's count, received, moved), so the item page shows the same lots the
+  plan counted, and lists every stock change made in the app with Undo (picks undo with their order).
+
+**Verified.** 12 rule tests and 15 API tests on the real data; earlier numbers unchanged (268 tests);
+`alembic check` against Supabase after 0003: no drift; RLS on every table; local and live click-throughs.
+
+**Known limits.**
+- With "today" fixed at Nov 16, new sales are outside the 8-week selling-rate window: they change stock and promised
+  orders, not the selling rate, until "today" moves (ADR-026 follow-up).
+- Shipping is all-or-nothing per order (no partial shipments yet).

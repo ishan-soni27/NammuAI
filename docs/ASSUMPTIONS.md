@@ -44,6 +44,13 @@ Confirmed by Dana (date) · Decided by Ishan (date) · Assumption (not asked; ou
 | A31 | PO numbers when Dana leaves the number blank | `KB-00001`, `KB-00002`, ... (`business_rules.app_po_prefix`), never clashing with BlueTide's `PO-...` | Phase 6 plan | `services/records_service.py` | Approved with the plan |
 | A32 | Expected date when Dana leaves it blank | Order date + the supplier's time to arrive (her number in Suppliers). A computed date already in the past is refused: she types the real one | Phase 6 plan; Dana Q3 (don't assume dates) | `services/records_service.py` | Approved with the plan |
 | A33 | Case items Dana adds | Pounds per case are required (seasonality compares a category's items in pounds, A26) | Claude, Phase 6 | `services/records_service.py` | Assumption (flagged to Ishan) |
+| A34 | BlueTide shows an order invoiced while Dana's copy is open (R7) | Not promised or taken from stock again; flagged "mark it shipped here" (mirror of Ishan's PO rule R4) | Phase 6 plan, approved by Ishan 2026-11-26 | `planning/records.py` | Approved with the plan |
+| A35 | The same order in both, Dana's shipped and BlueTide's still open (R8) | Her shipment applies; BlueTide's open line is dropped (counted once). Both shipped: BlueTide's count already has it out, so her picks aren't taken again | Phase 6 plan | `planning/records.py` | Approved with the plan |
+| A36 | Moves dated on or before BlueTide's stock count (R9) | Refused by the API ("BlueTide's stock count already includes moves made on or before that day") and ignored by the plan | Phase 6 plan | `services/shipments_service.py` | Approved with the plan |
+| A37 | Which lots a shipment takes (R10) | Soonest to expire first among counted (sellable, not expired) lots in the building it ships from; Dana can change the amounts; they must add up | Phase 6 plan | `services/shipments_service.py` | Approved with the plan |
+| A38 | Orders to our own buildings | Refused: transfers between buildings are stock moves (the loader treats INTERNAL customers as transfers, T16) | Claude, Phase 6 | `services/shipments_service.py` | Assumption (flagged to Ishan) |
+| A39 | Open samples | Counted as promised (they leave stock on their ship date) but never as demand once shipped (T17) | Claude, Phase 6 | `planning/records.py` | Assumption (flagged to Ishan) |
+| A40 | New customer's type default | Restaurant (most of Kestrel Bay's customers), never the cruise line's type | Claude, Phase 6 | `NewShipmentPage.tsx` | Assumption |
 
 ## Notes for explaining these in the review
 - **Why conservative?** Every default above leans toward ordering a little early: the upper end of the lead-time range,

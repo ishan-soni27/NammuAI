@@ -734,3 +734,74 @@ own independent system, where Dana uploads her own information and the system ca
   - buildings still come from a load;
   - new items have no sales history until step 2 or 3;
   - an app PO doesn't revive a dormant BlueTide item.
+
+## #27 | 2026-11-26 14:40 UTC | "go to step 2 now": shipments and moving stock
+**Prompt (simplified):** Start step 2 of Phase 6.
+**What changed:**
+- **Migration 0003** (applied to Supabase; `alembic check`: no drift; RLS on every table): `app_customers`,
+  `shipments`, `shipment_lines`; stock movements link to their order and to the other half of a move.
+- **Rules R7–R10** in `planning/records.py` (pure):
+  - an order BlueTide shows invoiced isn't counted again (R7);
+  - Dana's copy wins when BlueTide still shows it open, counted once (R8);
+  - moves count only if dated after BlueTide's stock count (R9);
+  - a pick larger than its lot takes the next lot to expire in the same building, never below 0, with any shortfall
+    flagged (R10).
+- **Planning inputs:**
+  - her orders are classified like BlueTide's sales (`classify_sale`);
+  - open orders are promised on their ship date;
+  - shipped orders take their picks and feed the selling rate;
+  - lots carry where they came from.
+- **API:** `/customers`, `/shipments` (create, list, `/picks`, ship, cancel, undo-ship), `/stock-moves`,
+  `/stock-lots?item=`, `/stock-movements?item=`. Undo reverses both halves of a move.
+- **Screens:**
+  - Shipments page (overdue orders red);
+  - New order, with "add a customer";
+  - Ship shows the lots to take first, soonest to expire and editable;
+  - "Move to New Bedford" on Harbor lots in the stuck list, and "Move" on item-page lots;
+  - the item page lists stock changes made in the app, with Undo;
+  - Activity labels for every new action.
+- Docs: ADR-028, A34–A40, CLAUDE.md (invariant 5, code map, playbook), PRIORITIES (P0 #11 done).
+**Impact:**
+- **Checks:**
+  - 268 backend tests pass: 12 new rule tests and 15 new API tests; the earlier numbers are unchanged;
+  - ruff, build, lint and format are clean; the raw files are unchanged.
+- **Browser checks, local and live:** every page at 1280 px and 375 px, no errors and no sideways scrolling.
+- **Local click-through:**
+  - add a customer, then log SH-00001 (promised +40);
+  - ship it with the picks shown first (New Bedford −40, no longer promised);
+  - undo shipped (stock back), then cancel;
+  - move 100 cases of SAL-POR6 from Harbor to New Bedford using the stuck list (Harbor 1,050 → 950);
+  - undo the move on the item page.
+  The earlier PO and Monday click-throughs still pass.
+- **Live:**
+  - the same flow, labelled "Claude (live click-through)", using an existing customer (no permanent test customer)
+    and reversed;
+  - live is back to the start: 3 / 6 / 5 / 16, SHR-1620 480 sellable and 201 promised, SAL-POR6 1,050 at Harbor;
+  - the test order stays as **SH-00001, cancelled**, so Dana's first real order will be SH-00002.
+- Screenshots: `docs/screenshots/phase6-step2/` (not committed).
+**Decisions made (and by whom):**
+- Ishan: "go" for step 2. R7 and R10 were approved with the plan.
+- Claude:
+  - orders to our own buildings are refused, so Dana uses Move stock (A38);
+  - open samples are promised but never counted as demand (A39);
+  - new customers default to Restaurant (A40);
+  - shipping is all-or-nothing per order for now;
+  - picks of a shipment are undone with the order, not one by one.
+**AI mistakes caught or corrected:**
+- **One edit silently didn't apply.** Claude used a find-and-replace with no check that it matched; the formatter had
+  already reshaped the target lines. As a result, the refresh after an edit didn't include shipments, picks, stock
+  lots or customers. The click-through caught it: a new customer didn't appear in the list. Fixed, and the other
+  unchecked replacements in this step were reviewed (they either asserted their match or are used by code that now
+  compiles).
+- **The first "new customer" defaulted to the Cruise type** (alphabetically first). It now defaults to Restaurant.
+- **Format-skip markers left lines too long.** They were removed and the formatter wrapped the lines.
+- A `useEffect` that copied the pick plan into state broke a React lint rule. The form now starts from the plan
+  instead.
+- **Moves had no Undo on any screen at first.** Claude added "Stock changes in the app" on the item page, with Undo.
+- Expiry dates in the ship panel had no year. Added.
+**Follow-ups:**
+- **Step 6.3 (Import):** BlueTide's files or Dana's own templates, from the website. Waiting for "go".
+- Still open:
+  - buildings come from a load;
+  - new sales don't move the selling rate until "today" moves;
+  - partial shipments.

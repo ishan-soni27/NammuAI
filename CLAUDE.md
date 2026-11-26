@@ -32,7 +32,8 @@ including tiny prompts, no-op prompts and prompts where you made a mistake. Log 
 4. **No hard-coded item, order, customer or vendor codes in logic.** Use seeds (`data/reference/`) or customer_type/vendor_type.
 5. **The loader never truncates app-layer tables** (`vendor_settings`, `item_settings`, `po_eta_overrides`, `handled_flags`,
    and Dana's own records since Phase 6: `app_vendors`, `app_items`, `purchase_orders`, `purchase_order_lines_app`,
-   `po_line_status`, `stock_movements`). They never get foreign keys into BlueTide's tables (`APP_LAYER` in models.py).
+   `po_line_status`, `stock_movements`, `app_customers`, `shipments`, `shipment_lines`). They never get foreign keys
+   into BlueTide's tables (`APP_LAYER` in models.py).
    Vendor settings seeds are inserted only if missing.
 6. Read raw CSVs as strings (`dtype=str, keep_default_na=False`). They are CRLF. Use `Decimal`/numeric for quantities and money, and `date` for business dates.
 7. Trap IDs (T01–T31) and golden facts (G01–G17) appear in code comments, test names and `docs/DATA_AUDIT.md`.
@@ -48,12 +49,14 @@ data/reference/*.csv         human-maintained seeds (pack sizes, lead times, loc
 backend/app/config/          settings.py (env), business_rules.py (ALL tunable numbers)
 backend/app/loader/          one-time CSV load: read_raw → rules (T01..T31) → normalize/classify/convert → write → report
 backend/app/planning/        PURE engine (no DB/clock/I/O): seasonality, demand, supply, projection, ordering, stuck, explain,
-                             records (Dana's records matched with BlueTide's: rules R1-R6, ADR-027)
+                             records (Dana's records matched with BlueTide's: R1-R6 POs, R7-R10 orders/moves; ADR-027/028)
 backend/app/services/        planning_inputs (DB → engine inputs: BlueTide cached per load + Dana's records fresh),
-                             records_service (POs, receipts, items, suppliers), planning_service, presenters (→ DTOs),
+                             records_service (POs, receipts, items, suppliers), shipments_service (orders, picks, moves,
+                             customers), planning_service, presenters (→ DTOs),
                              audit (audit rows in the same transaction, request_log, event_log)
 backend/app/api/v1/          routers: health, items (dashboard/drill-down/handled/settings/new items), suppliers (vendors,
                              new suppliers, PO dates), purchase_orders (list, create, ship, cancel, receive, undo, locations),
+                             shipments (customers, orders, picks, ship/cancel/undo, stock lots, stock changes, moves),
                              activity (data notes, audit, events, load runs, settings); schemas.py; docs at /api/v1/docs
 backend/tests/               unit/ (per trap), golden/ (real data, G01–G17), api/
 frontend/src/                api/ (client, types mirroring schemas.py, queries.ts = one hook per endpoint + edits)
@@ -112,6 +115,7 @@ python3 scripts/profile_data.py
 | "Different cushion for one item" | `item_settings.safety_days_override` (already supported) |
 | "Add a field to a PO" or "a new PO status" | Model + migration (app layer), `planning/records.py` if it changes what's counted, `services/records_service.py`, `PORow.tsx` |
 | "Count a BlueTide receipt differently" | The R1-R6 rules in `planning/records.py` (one test per rule in `tests/unit/planning/test_records.py`) |
+| "Ship part of an order" / "pick lots differently" | `services/shipments_service.py` (`_plan_picks`, `ship`) and R10 in `planning/records.apply_movements` |
 | "Filter by vendor or category" | Frontend only. The dashboard already returns vendor and category |
 | "Harbor cost per month" | Add pallet rate to `locations` and cases-per-pallet to `pack_sizes.csv`, then compute in `planning/stuck.py` |
 
