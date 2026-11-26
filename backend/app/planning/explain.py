@@ -18,9 +18,19 @@ from app.planning.types import CommittedLine, DemandProfile, IncomingLine, OnHan
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
+# Units spelled out for Dana (Ishan, 2026-11-26: "what is cs?"). BlueTide's codes stay in the data.
+UNIT_WORDS: dict[str, tuple[str, str]] = {"CS": ("case", "cases"), "LB": ("lb", "lb")}
+
+
+def unit_word(uom: str, value: float) -> str:
+    """'cases' / 'case' / 'lb'. An unknown code is shown lower-cased, as BlueTide wrote it."""
+    one, many = UNIT_WORDS.get(uom.upper(), (uom.lower(), uom.lower()))
+    return one if round(value) == 1 else many
+
+
 def qty(value: float, uom: str) -> str:
-    """'480 cs', '8,479 lb'. Whole units: Dana counts cases, and pounds don't need decimals here."""
-    return f"{round(value):,} {uom.lower()}"
+    """'480 cases', '8,479 lb'. Whole units: Dana counts cases, and pounds don't need decimals here."""
+    return f"{round(value):,} {unit_word(uom, value)}"
 
 
 def day(value: date) -> str:

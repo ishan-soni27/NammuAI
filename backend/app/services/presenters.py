@@ -15,6 +15,7 @@ from datetime import date
 
 from app.api.v1 import schemas as s
 from app.db import models as m
+from app.planning.explain import qty as explain_qty
 from app.planning.types import IncomingLine, ItemPlan, PlanResult, StuckItem, TrustStrip
 
 URGENT = ("TOO_LATE", "ORDER_THIS_WEEK", "ORDER_SOON")
@@ -115,7 +116,7 @@ def _money(value: float) -> str:
 
 
 def _qty_by_unit(by_unit: dict[str, float]) -> str:
-    return " + ".join(f"{round(v):,} {u.lower()}" for u, v in sorted(by_unit.items()) if v)
+    return " + ".join(explain_qty(v, u) for u, v in sorted(by_unit.items()) if v)
 
 
 def summary_sentences(
