@@ -408,3 +408,37 @@ ruff? Begin Phase 3.
   to the A23 finding.
 - The comparison script formatted dates through strftime ("10"); fixed.
 **Follow-ups:** Ishan: decide A23; confirm A24/A26. Phase 4 (API) is waiting for "go".
+
+## #18 | 2026-11-26 05:57 UTC | "What have you built? Does the site work?" + count open orders once + "does this still fix the holiday problem?"
+**Prompt (simplified):** What's done so far, and does the site actually work? Ishan agreed to count open customer orders
+once, then asked whether that still fixes Dana's problem of not keeping up with holiday demand.
+**What changed:**
+- `business_rules.open_orders_in_selling_rate` False (was True per §6.2), with doc/source citing the decision and data.
+- Test renamed `test_open_orders_count_once_by_default`.
+- `scripts/compare_answer_key.py`: the third scenario is now "spec-6.2".
+- ASSUMPTIONS A23 → Decided by Ishan; ADR-013 note; CLAUDE.md. This entry was written after plan mode, which blocks writes.
+**Impact:**
+- **Status answered honestly:** the site is live and connected, and the data is loaded and verified. The engine works
+  in code (184 tests). But **Dana can't see any ordering information yet**: the API serves only `/health` (Phase 4) and
+  the screens don't exist (Phase 5).
+- **Numbers after the change:**
+  - SHR-1620 too late, **Dec 14** (= the answer key, "ten days before Christmas"), 53 cs/wk.
+  - SHR-2125 too late Nov 24, now also flagged **covered only by its late PO**. LOB-T56 too late Nov 28.
+  - CRAB-SNW5 and LOB-MEAT are "this week" (no longer knife-edge too late). PAN-0507 is fine: its corrected PO lands
+    Dec 28 before it runs out. POL-FIL is "soon".
+  - The stuck list and trust strip are unchanged.
+- **Holiday question, checked with data:** holiday protection comes from the December seasonal index (shrimp 1.6×,
+  learned from all shrimp so SHR-1620's own stockout can't hide December), the real 12-week lead time, and order-by
+  dates (SHR-1620 needed ordering by ~Sep 7). The switch doesn't touch these.
+  - Counting once, SHR-1620 plans 542 cs for December. Last December's pace before it ran out was ~487 cs, so the plan
+    is still above it.
+  - The spec rule planned 656 cs and put the holiday bump in November.
+  - This December can't be fixed by ordering from Vietnam. The tool flags it 4 weeks ahead with ~382 cs short until
+    Jan 25: expedite or find another source. Used every Monday, it warns in September.
+**Decisions made (and by whom):** Ishan: count open orders once. Claude: extra holiday margin, if wanted, should come
+from the per-item cushion, not double counting.
+**AI mistakes caught or corrected:**
+- Claude's new test chained `pytest.approx` inside `<`, which doesn't work. Split into two asserts.
+- Ishan's sentence ("count open customer orders in the selling rate") read as the opposite of the recommendation.
+  Claude asked instead of guessing.
+**Follow-ups:** Phase 4 (API) is waiting for "go".

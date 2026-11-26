@@ -173,14 +173,16 @@ class BusinessRules:
     )
 
     open_orders_in_selling_rate: bool = _rule(
-        True,
-        doc="Whether open (not yet shipped) customer orders count toward the recent selling rate. "
-        "They are always deducted from stock on their ship date. True counts holiday pre-bookings "
-        "twice (once in the rate that drives the forecast, once when they ship), so run-outs come "
-        "earlier. False counts them once.",
-        source="BUILD_PROMPT §6.2 / ADR-013 (True). Data check 2026-11-26: all 11,881 past orders "
-        "shipped within 3 days of ordering, but this week's open orders are mostly booked 1–4+ weeks "
-        "ahead (holiday pre-bookings). Kept True (the cautious choice) pending Ishan's decision.",
+        False,
+        doc="Whether open (not yet shipped) customer orders ALSO count toward the recent selling rate. "
+        "They are always deducted from stock on their ship date. False (the setting) counts each "
+        "order once. True would count holiday pre-bookings twice (once in the rate that drives the "
+        "forecast, once when they ship), and would put the holiday bump in November instead of December.",
+        source="Decided by Ishan 2026-11-26 (A23): count once. BUILD_PROMPT §6.2 counted them in the "
+        "rate too. "
+        "Data check: all 11,881 past orders shipped within 3 days of ordering, but this week's open orders "
+        "are mostly holiday pre-bookings 1–4+ weeks ahead. Holiday protection is unaffected: SHR-1620 still "
+        "plans 542 cs for December (last December's pace was ~487 cs) and is still flagged too late.",
     )
 
     # ---- Run-out projection and status (§6.8) -------------------------------------------

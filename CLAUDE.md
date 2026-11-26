@@ -117,6 +117,7 @@ Each row should be a small, tested change. If one isn't, refactor it in Phase 6.
   uses confirmed supply only; a best-case "if the late PO arrives" run flags items *covered only by a late PO*.
 - **Priorities live in `docs/PRIORITIES.md`.** P0 first. Next after P0: a Harbor storage cost calculator (Dana types cases
   per pallet; $30/pallet/month; save to a table; CSV export). A chat assistant is P2 (later).
-- **Open orders in the selling rate** (`open_orders_in_selling_rate`, A23): kept True per spec, pending Ishan's decision.
+- **Open orders are counted once** (Ishan 2026-11-26, A23): deducted on their ship date, NOT added to the selling rate
+  (`open_orders_in_selling_rate = False`; BUILD_PROMPT §6.2 said both). Holiday caution comes from seasonality + cushion.
 - **One Vercel project hosts both the website and the API** (Vercel Services), not Render + Vercel (2026-11-25, ADR-002).
   BUILD_PROMPT §8.1/§15 still say Render; this overrides it.

@@ -121,7 +121,13 @@ optimal. Container and minimum-order rounding is deferred to P1.
 and a regex is used only to validate that table, never at runtime. _Full write-up to come (§6.3)._
 
 ## ADR-013 Demand dated by order date; open orders deducted by ship date
-**Decision:** See A11. This is slightly early (conservative) for pre-booked orders. _Full write-up to come (§6.2)._
+**Decision:** See A11. This is slightly early (conservative) for pre-booked orders.
+**Changed 2026-11-26 (Ishan, A23): open orders are counted once.** They are deducted on their ship date and no longer also feed
+the selling rate. Every past order shipped within 3 days, but this week's open orders are holiday pre-bookings, so counting
+them in the rate as well double-counted December. It inflated SHR-1620's rate 47% and moved the holiday bump into November.
+Holiday protection comes from the December seasonal index (shrimp 1.6×), the real 12-week lead time and order-by dates,
+not from double counting. SHR-1620 is still too late (Dec 14), planning 542 cs for December vs last December's ~487 cs pace.
+Extra margin, if wanted, comes from the per-item cushion. Switch: `open_orders_in_selling_rate`. _Full write-up to come (§6.2)._
 
 ## ADR-014 Exclusions by rule and seed data, not hard-coded names
 **Decision:** Transfers are excluded by customer type INTERNAL, and one-offs by `data/reference/excluded_orders.csv`

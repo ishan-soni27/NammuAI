@@ -4,9 +4,9 @@ The answer key came from a ROUGH pandas model in the planning chat. It is a sani
 target (BUILD_PROMPT §0 rule 5: never tune logic to match it). This script exists to EXPLAIN
 differences. It runs the engine three ways:
 
-  current   the rules as they are today (Dana's late-PO answer; open orders in the rate per §6.2)
-  key-like  late POs assumed to arrive in 7 days, as the answer key (and the email default) did
-  once      open orders counted once (on their ship date only), not also in the selling rate
+  current   the rules as they are today (Dana's late-PO answer; open orders counted once, Ishan's A23)
+  key-like  current, but late POs assumed to arrive in 7 days, as the answer key (and the email default) did
+  spec-6.2  current, but open orders ALSO counted in the selling rate, as BUILD_PROMPT §6.2 originally said
 
 Run from the repo root with the backend's Python (no database needed; reads data/raw):
     backend/.venv/bin/python scripts/compare_answer_key.py
@@ -57,7 +57,7 @@ def main() -> None:
     runs = {
         "current": plan(inputs, rules),
         "key-like": plan(inputs, replace(rules, late_po_assumed_days=7)),
-        "once": plan(inputs, replace(rules, open_orders_in_selling_rate=False)),
+        "spec-6.2": plan(inputs, replace(rules, open_orders_in_selling_rate=True)),
     }
     by_item = {name: {p.item.item_code: p for p in r.items} for name, r in runs.items()}
 

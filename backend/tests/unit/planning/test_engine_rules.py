@@ -299,10 +299,15 @@ def test_simulation_floor_tracks_lost_sales() -> None:
     )
 
 
-def test_open_orders_in_selling_rate_switch() -> None:
-    # A 60-case pre-booking: counted in the rate by default (spec §6.2), or only on its ship date.
+def test_open_orders_count_once_by_default() -> None:
+    # A 60-case pre-booking counts ONCE: deducted on its ship date, not added to the selling rate
+    # (Ishan 2026-11-26, A23). The spec's original rule (also in the rate) is still one switch away.
     sales = steady_sales() + [open_order(qty=60, ship=D(30))]
-    counted = one(run(sales=sales, lots=[lot(qty=500)]))
-    once = one(run(replace(RULES, open_orders_in_selling_rate=False), sales=sales, lots=[lot(qty=500)]))
-    assert counted.demand.base_rate_per_day > once.demand.base_rate_per_day == pytest.approx(1.0)
-    assert counted.committed_total == once.committed_total == 60  # deducted on ship date either way
+    once = one(run(sales=sales, lots=[lot(qty=500)]))
+    also_in_rate = one(
+        run(replace(RULES, open_orders_in_selling_rate=True), sales=sales, lots=[lot(qty=500)])
+    )
+    assert RULES.open_orders_in_selling_rate is False
+    assert once.demand.base_rate_per_day == pytest.approx(1.0)
+    assert also_in_rate.demand.base_rate_per_day > once.demand.base_rate_per_day
+    assert once.committed_total == also_in_rate.committed_total == 60  # deducted on ship date either way
