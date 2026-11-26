@@ -1365,3 +1365,67 @@ He asked two questions in the plan: (a) the instruction's wording; (b) the reten
 - Step 4 (numbers-only "why") when Ishan says go.
 - **Ishan:** check Vercel for `AS_OF_DATE`. Live shows Nov 16 either way today, so I can't tell from outside whether
   it's set.
+
+### Step 4: numbers-only "why" ("go"; STOP after)
+**What changed:**
+- **`planning/explain.breakdown`** replaces `explain()`. It returns `BreakdownRow`s {key, label, qty, unit, date,
+  detail, link}, built from the same values the engine used, only the rows that apply:
+  - can sell (by building);
+  - not counted;
+  - promised (orders, ship span, largest);
+  - each counted arrival (our date, plus BlueTide's when corrected);
+  - each late PO;
+  - selling per week (last 8 weeks);
+  - season ahead (next 3 months);
+  - runs out;
+  - new order lands;
+  - short (too late only);
+  - order at least (a past order-by date reads "order now (was due …)");
+  - if the late PO arrives today.
+
+  `link` points at the item-page table with the source rows (`#have`, `#promised`, `#on-the-way`, `#late`, `#demand`,
+  `#chart`). `ItemDetailOut.breakdown` replaces `explanation`.
+- **`late_po_instruction`**, the one sentence for items only a late PO would cover (Ishan's wording, with the "0 to
+  order" and several-PO variants). It's on `ItemCard.instruction`, the Monday card and the item page, and replaces
+  the two lines that contradicted each other.
+- **The chart uses the floored balance:** lost sales are lost. SHR-1620 now lands at 594 cases on Jan 25, not about
+  218. Run-out and status are unchanged.
+- **Item page:** the "Why" card is a compact table (label linking to its table, quantity, date, note), with the
+  instruction on top, and the anchors are on the cards.
+- **Monday cards** opened: short labels only (runs out, order by, order at least, new order lands, short, on hold,
+  late POs) plus the instruction. The paragraphs are gone.
+**Impact:**
+- **Checks:** 269 backend tests pass (31 new), including:
+  - SHR-1620's ten rows, value by value;
+  - the three live instructions (SHR-2125, CAL-RING, PAN-0709) and the several-PO wording;
+  - a past order-by date reading "order now";
+  - **the reconciliation on the real data: can sell − promised (shipping by X) + counted arrivals (by X) − forecast
+    (through X) + lost sales (through X) = chart stock**, for SHR-1620, LOB-T56, SAL-POR6, CRAB-SNW5 and SHR-2125 on
+    days 0, 7, 30, 60 and 120;
+  - with no stockout (SAL-POR6) the loss is 0;
+  - SHR-1620's chart is at 0 the day before its PO and about 594 on Jan 25.
+  Ruff, build, lint and format are clean, and the raw-file checksums match.
+- **Local and live (version f842a35):**
+  - the breakdown and Monday-card checks pass at 1280 and 375 px, and every breakdown link has a target;
+  - the page sweep and edit click-through pass;
+  - Monday is 3/6/5/16 with 3 late POs (1,500 cases); SHR-1620 is 480 / 201 / Dec 14, short 382 until Jan 25;
+  - the three instructions show.
+  No migration was needed.
+**Decisions made (and by whom):**
+- Ishan: the breakdown fields, the rows, and the instruction wording (a).
+- Claude:
+  - the engine's row field is `on` (the API's `date`), because a field named `date` would shadow its own type in
+    Pydantic;
+  - building codes (NB, PVD, HCS) in the can-sell note, because the engine has no names;
+  - "order at least" shows the order-by date when it's still ahead;
+  - the chart fix (found while planning, approved with the plan).
+**AI mistakes caught or corrected:**
+- **A past order-by date in the date column.** My first draft put SHR-2125's order-by date, Tue Aug 18 (long past),
+  in the "Order at least" row's date column. Caught reading the printed rows before writing any test; now the date
+  is blank and the note says "order now (was due Tue Aug 18)".
+- **An edit missed** because the formatter had already wrapped the target line. Its check caught it, nothing was
+  written, and the code was already right.
+- **Four existing tests matched sentence text** ("Only covered by the late PO", "You can sell 480 cases now"). They
+  now assert the rows and the instruction. That was expected, but it's noted here because it's where a silent
+  regression would have hidden.
+**Follow-ups:** step 5 (docs, deploy, log) when Ishan says go. **Ishan:** still check Vercel for `AS_OF_DATE`.
