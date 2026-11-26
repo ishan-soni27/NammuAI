@@ -6,7 +6,7 @@ from fastapi import FastAPI, Query
 from fastapi.testclient import TestClient
 
 from app.errors import AppError
-from app.middleware import clean_actor, clean_request_id
+from app.middleware import CRON_ACTOR, actor_for, clean_actor, clean_request_id
 
 
 def _envelope(body: dict) -> dict:
@@ -117,3 +117,11 @@ def test_cors_rejects_unknown_origin(client: TestClient) -> None:
 def test_cors_exposes_request_id_to_the_browser(client: TestClient) -> None:
     r = client.get("/api/v1/health", headers={"Origin": "http://localhost:5173"})
     assert "x-request-id" in r.headers["access-control-expose-headers"].lower()
+
+
+def test_vercel_cron_is_named_in_the_request_log_unless_an_actor_is_sent() -> None:
+    assert actor_for(None, "vercel-cron/1.0") == CRON_ACTOR == "Vercel cron"
+    assert actor_for("  ", "vercel-cron/1.0") == "Vercel cron"
+    assert actor_for("Ishan", "vercel-cron/1.0") == "Ishan"
+    assert actor_for(None, "Mozilla/5.0") == "Dana"
+    assert actor_for(None, None) == "Dana"

@@ -3,7 +3,8 @@
 Purpose
     For every HTTP request this middleware:
       1. assigns a request id (reuses a safe incoming `X-Request-ID`, otherwise a new one),
-      2. reads who is acting from `X-Actor` (default "Dana"; there is no auth in v1, ADR-011),
+      2. reads who is acting from `X-Actor` (default "Dana"; there is no auth in v1, ADR-011), or
+         "Vercel cron" for Vercel's daily keep-awake call (so the request log shows it fired),
       3. puts both in context variables so every log line and audit row can carry them,
       4. returns the id to the browser as the `X-Request-ID` response header,
       5. logs one structured "request finished" line with method, path, status, duration,
@@ -57,6 +58,24 @@ def clean_actor(raw: str | None) -> str:
     return cleaned or DEFAULT_ACTOR
 
 
+# Vercel's scheduled calls (vercel.json "crons") send this User-Agent and no X-Actor.
+_CRON_USER_AGENT = "vercel-cron/"
+CRON_ACTOR = "Vercel cron"
+
+
+def actor_for(x_actor: str | None, user_agent: str | None) -> str:
+    """Who is acting: the X-Actor header, else "Vercel cron" for Vercel's scheduled call, else "Dana".
+
+    The cron (a daily /api/v1/health that keeps Supabase awake) is then easy to confirm in
+    request_log: `select occurred_at from request_log where actor = 'Vercel cron'`
+    (or `python ../scripts/check_cron.py`).
+    Examples: (None, "vercel-cron/1.0") -> "Vercel cron"; ("Ishan", "vercel-cron/1.0") -> "Ishan".
+    """
+    if not (x_actor or "").strip() and (user_agent or "").lower().startswith(_CRON_USER_AGENT):
+        return CRON_ACTOR
+    return clean_actor(x_actor)
+
+
 def clean_request_id(raw: str | None) -> str:
     """Reuse a safe incoming request id (so frontend and backend logs share it), else make one."""
     if raw and _SAFE_REQUEST_ID.match(raw):
@@ -77,7 +96,7 @@ class RequestContextMiddleware:
 
         headers = Headers(scope=scope)
         request_id = clean_request_id(headers.get("x-request-id"))
-        actor = clean_actor(headers.get("x-actor"))
+        actor = actor_for(headers.get("x-actor"), headers.get("user-agent"))
         rid_token = request_id_var.set(request_id)
         actor_token = actor_var.set(actor)
 
