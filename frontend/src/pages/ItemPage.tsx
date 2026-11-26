@@ -37,7 +37,7 @@ function Card({ title, children, id }: { title: ReactNode; children: ReactNode; 
 
 function Table({ head, children }: { head: ReactNode[]; children: ReactNode }) {
   return (
-    <div className="-mx-1 overflow-x-auto">
+    <div className="relative -mx-1 overflow-x-auto">
       <table className={`w-full text-sm ${head.length > 3 ? "min-w-[32rem]" : ""}`}>
         <thead className="text-left text-fog">
           <tr>

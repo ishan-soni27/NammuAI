@@ -24,7 +24,7 @@ function TrapRows({ trapId }: { trapId: string }) {
     <QueryState query={page} label="Loading rows">
       {(data) => (
         <div>
-          <div className="-mx-1 overflow-x-auto">
+          <div className="relative -mx-1 overflow-x-auto">
             <table className="w-full min-w-[40rem] text-sm">
               <thead className="text-left text-fog">
                 <tr>

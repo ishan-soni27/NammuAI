@@ -45,7 +45,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-lg border border-rope bg-hull px-5 py-4">
       <h2 className="text-lg font-bold">{title}</h2>
-      <div className="mt-3 -mx-1 overflow-x-auto">{children}</div>
+      <div className="relative mt-3 -mx-1 overflow-x-auto">{children}</div>
     </section>
   );
 }
