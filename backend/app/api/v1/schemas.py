@@ -450,3 +450,168 @@ class ClientEventIn(BaseModel):
     level: Literal["INFO", "WARNING", "ERROR"] = "ERROR"
     event: str = Field(max_length=200)
     details: dict[str, Any] = Field(default_factory=dict)
+
+
+# ---- Dana's own records (Phase 6, ADR-026/027) ------------------------------------------------
+
+
+class VendorCreateIn(BaseModel):
+    """A new supplier. The code is made from the name if left blank."""
+
+    vendor_code: str | None = Field(default=None, max_length=20)
+    name: str = Field(min_length=1, max_length=120)
+    country: str | None = Field(default=None, max_length=60)
+    lead_time_days: int
+    cushion_days: int
+    order_cycle_days: int | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+
+class ItemCreateIn(BaseModel):
+    item_code: str = Field(min_length=1, max_length=30)
+    description: str = Field(min_length=1, max_length=120)
+    category: str = Field(min_length=1, max_length=60)
+    sell_uom: Literal["CS", "LB"]
+    lb_per_case: float | None = Field(default=None, gt=0)
+    vendor_code: str = Field(min_length=1, max_length=20)
+    status: Literal["active", "discontinued"] = "active"
+    note: str | None = Field(default=None, max_length=500)
+
+
+class ItemDetailsPatchIn(BaseModel):
+    """Only the fields sent change. Editing a BlueTide item stores Dana's version, which wins."""
+
+    description: str | None = Field(default=None, min_length=1, max_length=120)
+    category: str | None = Field(default=None, min_length=1, max_length=60)
+    sell_uom: Literal["CS", "LB"] | None = None
+    lb_per_case: float | None = Field(default=None, gt=0)
+    vendor_code: str | None = Field(default=None, min_length=1, max_length=20)
+    status: Literal["active", "discontinued"] | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+
+class AppItemOut(BaseModel):
+    item_code: str
+    description: str
+    category: str
+    sell_uom: str
+    lb_per_case: float | None
+    vendor_code: str
+    status: str
+    source: Literal["app", "bluetide", "both"]
+    note: str | None
+    updated_at: datetime | None
+    updated_by: str | None
+
+
+class POLineIn(BaseModel):
+    item_code: str = Field(min_length=1, max_length=30)
+    qty: float = Field(gt=0, description="In the item's selling unit (cases or lb).")
+    unit_cost: float | None = Field(
+        default=None, ge=0, description="Per selling unit; blank uses the last cost."
+    )
+
+
+class POCreateIn(BaseModel):
+    vendor_code: str = Field(min_length=1, max_length=20)
+    po_no: str | None = Field(default=None, max_length=30, description="Blank: the next KB-number.")
+    order_date: date | None = Field(default=None, description="Blank: today (the business date).")
+    expected_date: date | None = Field(
+        default=None, description="Blank: order date + the supplier's lead time."
+    )
+    note: str | None = Field(default=None, max_length=500)
+    lines: list[POLineIn] = Field(min_length=1, max_length=50)
+    clear_handled_notes: bool = Field(
+        default=True,
+        description="Clear active 'handled' notes for these items, so they aren't counted twice.",
+    )
+
+
+class POShipIn(BaseModel):
+    shipped_on: date | None = None
+    container_no: str | None = Field(default=None, max_length=40)
+    eta: date | None = Field(
+        default=None, description="A new expected arrival date, if the supplier gave one."
+    )
+    note: str | None = Field(default=None, max_length=500)
+
+
+class POCancelIn(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class POReceiveIn(BaseModel):
+    qty: float = Field(gt=0, description="In the item's selling unit.")
+    location_code: str = Field(min_length=1, max_length=20)
+    lot_no: str = Field(min_length=1, max_length=40)
+    expiry_date: date
+    unit_cost: float | None = Field(default=None, ge=0)
+    received_on: date | None = Field(default=None, description="Blank: today (the business date).")
+    allow_over_receipt: bool = False
+    note: str | None = Field(default=None, max_length=500)
+
+
+class UndoIn(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ReceiptOut(BaseModel):
+    movement_id: int
+    received_on: date
+    qty: float
+    location_code: str
+    location_name: str
+    lot_no: str
+    expiry_date: date | None
+    unit_cost: float | None
+    created_by: str
+    added_to_stock: bool
+    why_not: str | None
+
+
+class POLineOut(BaseModel):
+    po_no: str
+    line_no: int
+    item_code: str
+    description: str
+    sell_uom: str
+    source: Literal["app", "bluetide", "both"]
+    ordered: float
+    received: float
+    remaining: float
+    status: Literal["open", "shipped", "received", "cancelled", "late"]
+    counted: bool
+    eta: date | None
+    eta_source: str | None
+    bluetide_date: date | None
+    shipped_on: date | None
+    container_no: str | None
+    cancel_reason: str | None
+    unit_cost: float | None
+    flags: list[str]
+    receipts: list[ReceiptOut]
+
+
+class POOut(BaseModel):
+    po_no: str
+    vendor_code: str
+    vendor_name: str
+    order_date: date
+    source: Literal["app", "bluetide", "both"]
+    status: Literal["open", "shipped", "late", "partly_received", "received", "cancelled"]
+    expected_date: date | None
+    note: str | None
+    created_by: str | None
+    lines: list[POLineOut]
+
+
+class MovementOut(BaseModel):
+    id: int
+    movement_date: date
+    kind: str
+    item_code: str
+    location_code: str
+    lot_no: str
+    qty: float
+    reverses_id: int | None
+    created_by: str

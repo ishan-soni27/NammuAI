@@ -97,6 +97,12 @@ class BusinessRules:
         "stock is a write-off.",
         source="Dana 00:04:40: 'Anything starting with ZZ is from the old system.' (T05)",
     )
+    app_po_prefix: str = _rule(
+        "KB-",
+        doc="POs Dana creates in the app are numbered with this prefix (KB-00001, KB-00002, ...) when "
+        "she leaves the number blank, so they never clash with BlueTide's PO-...",
+        source="Phase 6 plan (approved by Ishan 2026-11-26): auto PO numbers",
+    )
     fresh_code_prefix: str = _rule(
         "FR-",
         doc="Item codes starting with this are fresh fish from the day boats: out of scope.",
