@@ -172,6 +172,17 @@ class BusinessRules:
         source="BUILD_PROMPT §6.7 / ADR-016.",
     )
 
+    open_orders_in_selling_rate: bool = _rule(
+        True,
+        doc="Whether open (not yet shipped) customer orders count toward the recent selling rate. "
+        "They are always deducted from stock on their ship date. True counts holiday pre-bookings "
+        "twice (once in the rate that drives the forecast, once when they ship), so run-outs come "
+        "earlier. False counts them once.",
+        source="BUILD_PROMPT §6.2 / ADR-013 (True). Data check 2026-11-26: all 11,881 past orders "
+        "shipped within 3 days of ordering, but this week's open orders are mostly booked 1–4+ weeks "
+        "ahead (holiday pre-bookings). Kept True (the cautious choice) pending Ishan's decision.",
+    )
+
     # ---- Run-out projection and status (§6.8) -------------------------------------------
     projection_horizon_days: int = _rule(
         182,
