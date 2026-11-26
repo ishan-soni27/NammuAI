@@ -14,6 +14,7 @@ import { ApiError, apiGet, apiSend, apiUpload } from "./client";
 import type {
   AuditEntry,
   Customer,
+  Harbor,
   Import,
   PickPlan,
   Shipment,
@@ -58,6 +59,7 @@ export const keys = {
   stockLots: (item: string) => ["stock-lots", item] as const,
   stockChanges: (item: string) => ["stock-changes", item] as const,
   imports: ["imports"] as const,
+  harbor: ["harbor"] as const,
 };
 
 // ---- Reads ---------------------------------------------------------------------------------
@@ -205,6 +207,7 @@ function refreshAfterEdit(client: QueryClient) {
     keys.imports,
     ["data-issues"],
     keys.loadRuns,
+    keys.harbor,
   ];
   for (const key of all) {
     void client.invalidateQueries({ queryKey: key });
@@ -500,4 +503,43 @@ export const useDiscardImport = () =>
   useEdit(
     (v: { id: number }) => apiSend<Import>("DELETE", `/imports/${v.id}`),
     () => "Import discarded",
+  );
+
+// ---- Harbor storage (P1 #1; ADR-031) -------------------------------------------------------
+
+export const useHarbor = () =>
+  useQuery({
+    queryKey: keys.harbor,
+    queryFn: ({ signal }) => apiGet<Harbor>("/harbor-storage", signal),
+  });
+
+/** No cases = what's at Harbor now for that item; cases = a what-if amount. */
+export interface HarborRowInput {
+  item_code: string;
+  cases_per_pallet: number;
+  cases?: number;
+}
+
+export const useAddHarborRows = () =>
+  useEdit(
+    (v: { rows: HarborRowInput[] }) => apiSend<Harbor>("POST", "/harbor-storage/rows", v),
+    (v) =>
+      v.rows.length === 1 ? "Added to your table" : `Added ${v.rows.length} rows to your table`,
+    (client, _v, result) => client.setQueryData(keys.harbor, result),
+  );
+
+export const useDeleteHarborRow = () =>
+  useEdit(
+    (v: { id: number }) => apiSend<Harbor>("DELETE", `/harbor-storage/rows/${v.id}`),
+    () => "Removed from your table",
+    (client, _v, result) => client.setQueryData(keys.harbor, result),
+  );
+
+export const useSaveCasesPerPallet = () =>
+  useEdit(
+    (v: { code: string; cases_per_pallet: number }) =>
+      apiSend<ItemSettings>("PATCH", `/items/${enc(v.code)}/settings`, {
+        cases_per_pallet: v.cases_per_pallet,
+      }),
+    (v) => `Saved: ${v.cases_per_pallet.toLocaleString("en-US")} cases per pallet for ${v.code}`,
   );

@@ -218,6 +218,7 @@ export interface ItemSettings {
   item_code: string;
   lifecycle_override: string | null;
   safety_days_override: number | null;
+  cases_per_pallet?: number | null;
   note: string | null;
   updated_at: string | null;
   updated_by: string | null;
@@ -597,4 +598,62 @@ export interface Import {
   confirm_code: string | null;
   load_run_id: number | null;
   error: string | null;
+}
+
+// ---- Harbor storage (P1 #1; ADR-031): mirrors HarborOut in schemas.py ----------------------
+
+export interface HarborLot {
+  lot_no: string;
+  location_name: string;
+  cases: number;
+  expiry_date: string | null;
+}
+
+export interface HarborItem {
+  item_code: string;
+  description: string;
+  sell_uom: string;
+  cases: number;
+  lots: HarborLot[];
+  cases_per_pallet: number | null;
+  pallets: number | null;
+  cost_per_month: number | null;
+  /** Why its Harbor stock is on the stuck list, if it is. */
+  stuck_tag: StuckTag | null;
+  /** Sold by the pound with no pounds per case: these lots can't be put on pallets. */
+  unconverted_lots: number;
+}
+
+export interface HarborTotals {
+  items: number;
+  cases: number;
+  priced_items: number;
+  pallets: number;
+  cost_per_month: number;
+}
+
+export interface HarborRow {
+  id: number;
+  kind: "at_harbor" | "what_if";
+  as_of_date: string;
+  item_code: string;
+  description: string;
+  cases: number;
+  lots: number;
+  cases_per_pallet: number;
+  pallets: number;
+  rate_per_pallet_month: number;
+  cost_per_month: number;
+  created_at: string;
+  created_by: string;
+}
+
+export interface Harbor {
+  as_of: string;
+  rate_per_pallet_month: number;
+  cases_per_pallet_max: number;
+  location_names: string[];
+  items: HarborItem[];
+  totals: HarborTotals;
+  saved: HarborRow[];
 }

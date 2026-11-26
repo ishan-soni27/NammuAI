@@ -35,6 +35,8 @@ const ACTION: Record<string, string> = {
   "import.start": "Started an import",
   "import.load": "Loaded an import",
   "import.discard": "Discarded an import",
+  "harbor_storage.add": "Added to the Harbor table",
+  "harbor_storage.delete": "Removed from the Harbor table",
 };
 
 const show = (v: unknown) =>

@@ -15,6 +15,7 @@ const LINKS = [
   { to: "/shipments", label: "Shipments" },
   { to: "/items", label: "Items" },
   { to: "/suppliers", label: "Suppliers" },
+  { to: "/harbor", label: "Harbor" },
   { to: "/data", label: "Data" },
   { to: "/activity", label: "Activity" },
 ] as const;
