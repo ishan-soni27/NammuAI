@@ -1444,3 +1444,86 @@ He asked two questions in the plan: (a) the instruction's wording; (b) the reten
 **Decisions made (and by whom):** none yet (Ishan to check).
 **AI mistakes caught or corrected:** none.
 **Follow-ups:** step 5 when Ishan says go.
+
+### Step 5: docs, deploy, log ("go do step 5"; STOP after)
+**What changed:**
+- **DECISIONS:**
+  - **ADR-032** "BlueTide stays the record; the app is the weekly planning layer": the scope-review context, the six
+    boundaries, the cut list (archived on the tag), the rejected alternatives (keep Phase 6; replace BlueTide; a live
+    connection), the tradeoffs, and "Revisit when Kestrel Bay asks to retire BlueTide";
+  - **ADR-033**: the numbers-only why, one instruction, a chart that writes off lost sales;
+  - ADR-026/027/028 marked **superseded** and ADR-029 **narrowed** (not deleted);
+  - ADR-003/020/030 carry update notes; the index and status note are updated.
+- **ASSUMPTIONS:**
+  - A27–A40 and A43–A45 are "Retired (ADR-032)" (17 rows);
+  - A42 is revised for the new checks (older blocks, same night warns, newer moves today);
+  - A46 is updated (no shipments file);
+  - new **A49** (derived today), **A50** (sales accumulation), **A51** (raw-row retention);
+  - the stale "assume a week" note under A18 is fixed.
+- **PRIORITIES:**
+  - P0 #10 and #11 → "Cut, archived on `archive/system-of-record`";
+  - #12 → weekly BlueTide uploads only;
+  - #13 → done (open PO lines and the Harbor table, no shipments);
+  - #4 → the numbers-only why;
+  - P2 now lists "recording transactions in the app" and "replacing BlueTide" with reasons.
+- **CLAUDE.md** (rewritten):
+  - the six boundaries;
+  - invariant 5's table list and retention;
+  - the code map (deps, accumulate, history, calendar, explain), commands and deploy order (additive migrations
+    before the push, drops after; no `AS_OF_DATE` on Vercel);
+  - the playbook: the PO/shipment/template rows removed; rows for the why, the instruction, the sales merge and
+    retention; the AS_OF row says "derived; `AS_OF_DATE` overrides";
+  - "Decisions already made": ADR-026 marked superseded.
+- **README** (rewritten):
+  - **What I built** (the weekly loop: upload, look, adjust, order);
+  - the one-minute tour using the breakdown and the SHR-2125 instruction;
+  - the pages;
+  - a new diagram (with the sales merge and "today = the stock count + 1"; parsed and rendered with Mermaid 11);
+  - **What I cut and why**;
+  - **Roadmap off BlueTide** (purchasing first, then sales and receiving, BlueTide retired last, each record owned by
+    one system at a time);
+  - assumptions A49–A51;
+  - out of scope;
+  - the AI section, which now leads with the scope expansion Ishan caught and adds the chart bug;
+  - four fresh live screenshots (Monday, SHR-1620, On the way, Harbor).
+- **DEMO_SCRIPT** (rewritten):
+  - the PO, shipment and move steps are gone;
+  - new: the SHR-1620 card labels and the Why table with its links, and the SHR-2125 instruction with "Set real date"
+    on On the way;
+  - verified on the real data: with Dec 4 it's still too late but **short 123 until Dec 4** instead of 562 until
+    Feb 8, and order at least is 0;
+  - the Monday upload (check, then Start over).
+**Impact:**
+- **Deploy:**
+  - migration 0006 ran on Supabase in step 2 and 0007 in step 3 (both through the session pooler), so step 5 is docs
+    only;
+  - the live version is **be1fa8b**: health as_of 2026-11-16, snapshot 2026-11-15.
+- **Live smoke test (actor "Claude (final smoke test)"):**
+  - Monday **3/6/5/16**, 0 handled, 3 late POs (1,500 cases);
+  - SHR-1620 **480 / 201 / Dec 14**;
+  - all 12 pages: no errors and no sideways scrolling;
+  - **set and cleared a real PO date** on Monday, on the item page and on On the way, audited as `po_eta.set` /
+    `po_eta.clear`;
+  - **an upload check ran** (today stays Mon Nov 16, 15,750 sales lines the same, same-night warning) and was
+    discarded.
+- Tests are unchanged from step 4: 269 pass.
+**Decisions made (and by whom):**
+- Ishan: the step 5 list.
+- Claude:
+  - ADR-033 as its own record (the code already referred to it);
+  - README screenshots: On the way in place of the second Harbor image, with Harbor kept;
+  - the demo's upload step checks and then discards, rather than loading.
+**AI mistakes caught or corrected:**
+- **A made-up number.** The first ADR-032 draft said "about 4,000 lines" were cut. I measured it before committing:
+  8,070 deleted and 627 added. Corrected.
+- **The README misquoted Ishan.** Its first draft put "an ERP system Dana can log her work in" in quotation marks,
+  but those weren't his words (#24). It's now a paraphrase. It also said "19 assumptions" when 17 were retired
+  (A41/A42 survive). Fixed.
+- **A wrong button label.** The demo script said to click "Clear" next to a date; the button is "Clear date".
+  Checked against `SetPoDate.tsx` and fixed.
+- **A refused write.** The README rewrite was refused because I had edited the file with a script after reading it.
+  I re-read it (it was my own last version, nothing else) before writing.
+**Follow-ups:**
+- **Ishan:** check Vercel → Settings → Environment Variables for `AS_OF_DATE` (see #37). Still unreported.
+- `docs/screenshots/` (per-phase screenshots) and `codebase.zip` are untracked and not committed.
+- After that: P1 items as Ishan chooses, or the review.
