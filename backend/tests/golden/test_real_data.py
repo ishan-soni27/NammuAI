@@ -220,3 +220,56 @@ def test_no_errors_on_the_real_exports(result: LoadResult) -> None:
 def test_every_issue_names_a_trap_or_is_a_row_error(result: LoadResult) -> None:
     for issue in result.issues:
         assert issue.trap_id or issue.rule_code in {"unreadable_row", "unknown_item", "unknown_customer"}
+
+
+# ---- Phase 3: the planning engine on the real data (G15, G17) ------------------------------------
+
+from datetime import date  # noqa: E402
+
+from app.planning.engine import plan  # noqa: E402
+from app.planning.types import PlanResult  # noqa: E402
+from app.services.planning_inputs import inputs_from_dataset  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def engine_result(result: LoadResult) -> PlanResult:
+    return plan(inputs_from_dataset(result.dataset, load_reference().vendor_settings), RULES)
+
+
+def test_G15_purchase_order_arrival_dates(engine_result: PlanResult) -> None:
+    by_po = {
+        line.reference.split()[0]: line
+        for p in engine_result.items
+        for line in p.incoming + p.late_incoming
+        if line.source == "po"
+    }
+    assert by_po["PO-260443"].eta == date(2027, 1, 25)  # SHR-1620: BlueTide said Dec 28 (stale 8-week date)
+    assert by_po["PO-260443"].bluetide_date == date(2026, 12, 28)
+    # Late and NOT counted (Dana 2026-11-26, Q3). PO-260407 is late because it lands exactly today (A18).
+    for po_no in ["PO-260394", "PO-260376", "PO-260407"]:
+        assert by_po[po_no].is_late and by_po[po_no].eta is None, po_no
+    assert by_po["PO-260436"].eta == date(2026, 12, 28)  # PAN-0507: BlueTide said Nov 30
+    assert by_po["PO-260444"].eta == date(2026, 11, 27)  # LOB-T810: BlueTide said Nov 23
+
+
+def test_G17_nothing_dead_or_fresh_in_the_order_list(engine_result: PlanResult) -> None:
+    urgent = {"TOO_LATE", "ORDER_THIS_WEEK", "ORDER_SOON"}
+    in_list = [p for p in engine_result.items if p.confirmed.status in urgent]
+    assert in_list, "the order list shouldn't be empty on the real data"
+    assert all(p.lifecycle_status == "active" for p in in_list)
+    for p in engine_result.items:
+        if p.lifecycle_status in {"legacy", "dormant", "fresh_out_of_scope", "discontinued"}:
+            assert p.confirmed.status == "NOT_PLANNED", p.item.item_code
+
+
+def test_stuck_list_and_trust_strip_on_real_data(engine_result: PlanResult) -> None:
+    # Structural checks from §6.11 / §7 (not tuned numbers): SAL-POR6 is all inside the six-month
+    # line with 1,050 at Harbor; SHR-1620's Harbor stock is NOT stuck; the trust strip adds up.
+    stuck = {s.item_code: s for s in engine_result.stuck}
+    assert stuck["SAL-POR6"].qty == 1350 and stuck["SAL-POR6"].qty_at_harbor == 1050
+    assert all("INSIDE_SIX_MONTHS" in lot.tags for lot in stuck["SAL-POR6"].lots)
+    assert "SHR-1620" not in stuck
+    assert {"TIL-FIL", "SHR-6170"} <= {c for c, s in stuck.items() if s.primary_tag == "STOPPED_SELLING"}
+    t = engine_result.trust
+    assert (t.on_hold, t.damaged, t.expired, t.legacy) == ({"CS": 420}, {"CS": 20}, {"CS": 78}, {"CS": 59})
+    assert t.late_po_qty == {"CS": 1500}  # 800 + 400 + 300, shown as late, not counted
