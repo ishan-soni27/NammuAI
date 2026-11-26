@@ -28,6 +28,20 @@ function whenSentence(card: ItemCard, asOf: string): string {
   return runsOut || `Lasts more than ${duration(card.runway.horizon_days)}.`;
 }
 
+/**
+ * What to do about the order. "Order at least 0" happens in two cases: stock lasts long enough for now
+ * (order soon), or it's too late and stock already on the way lands before a new order could, so ordering
+ * more today wouldn't close the gap (SHR-1620: PO-260443 lands Jan 25, a new order Feb 8).
+ */
+function orderSentence(card: ItemCard, asOf: string): string {
+  if (card.order_at_least > 0) return `Order at least ${qty(card.order_at_least, card.sell_uom)}.`;
+  if (card.status !== "TOO_LATE") return "Nothing needs ordering today.";
+  const backFirst = card.back_in_stock_date && card.back_in_stock_date < card.new_order_arrival;
+  return backFirst && card.back_in_stock_date
+    ? `Ordering more today won't close the gap: stock already on the way lands first, about ${dayWithRelative(card.back_in_stock_date, asOf)}.`
+    : "Ordering more today won't close the gap.";
+}
+
 export function OrderCard({ card, asOf }: { card: ItemCard; asOf: string }) {
   const [handling, setHandling] = useState(false);
   const uom = card.sell_uom;
@@ -48,12 +62,7 @@ export function OrderCard({ card, asOf }: { card: ItemCard; asOf: string }) {
       <RunwayBar card={card} />
 
       <p className="mt-3">
-        {card.order_at_least > 0 ? (
-          <span className="font-semibold">Order at least {qty(card.order_at_least, uom)}.</span>
-        ) : (
-          <span className="font-semibold">Nothing needs ordering today.</span>
-        )}{" "}
-        {card.vendor_name}
+        <span className="font-semibold">{orderSentence(card, asOf)}</span> {card.vendor_name}
         {card.country ? `, ${card.country}` : ""}, {weeks(card.lead_time_days)}{" "}
         <Term explain="arrive">to arrive</Term> plus {weeks(card.cushion_days)}{" "}
         <Term explain="cushion">cushion</Term>.
@@ -61,11 +70,11 @@ export function OrderCard({ card, asOf }: { card: ItemCard; asOf: string }) {
 
       {card.status === "TOO_LATE" && card.short_qty > 0 && (
         <p className="mt-1 text-late">
-          Even ordering today, you'll be short about {qty(card.short_qty, uom)} until it lands
+          Expect to be short about {qty(card.short_qty, uom)} until it's back in stock
           {card.back_in_stock_date
             ? ` about ${dayWithRelative(card.back_in_stock_date, asOf)}`
             : ""}
-          .
+          . Ask the supplier to speed it up, or find another source.
         </p>
       )}
 
