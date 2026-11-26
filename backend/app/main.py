@@ -67,6 +67,10 @@ def create_app() -> FastAPI:
             "can arrive, and what is she stuck with. All business dates use AS_OF_DATE."
         ),
         lifespan=lifespan,
+        # Under /api/v1 because the site root belongs to the website (one Vercel project, ADR-002).
+        docs_url=f"{API_PREFIX}/docs",
+        openapi_url=f"{API_PREFIX}/openapi.json",
+        redoc_url=None,
     )
 
     install_error_handlers(app)
@@ -86,7 +90,11 @@ def create_app() -> FastAPI:
     @app.get("/", include_in_schema=False)
     def root() -> dict[str, str]:
         """A friendly landing response for anyone opening the bare API URL."""
-        return {"service": "Kestrel Bay ordering API", "docs": "/docs", "health": f"{API_PREFIX}/health"}
+        return {
+            "service": "Kestrel Bay ordering API",
+            "docs": f"{API_PREFIX}/docs",
+            "health": f"{API_PREFIX}/health",
+        }
 
     return app
 

@@ -10,8 +10,8 @@ Purpose
       6. turns any unexpected exception into the standard 500 error envelope.
 
 How it fits
-    Logging layer 1 (BUILD_PROMPT §10). Phase 4 adds a background write of the same fields
-    to the `request_log` table, hooked in at `_log_request`.
+    Logging layer 1 (BUILD_PROMPT §10): a JSON log line AND a `request_log` row per request
+    (written after the response, in a worker thread, never blocking or failing the request).
 
 Key decisions
     - Pure ASGI middleware rather than `BaseHTTPMiddleware`: it is faster, and context
@@ -32,15 +32,15 @@ import re
 import time
 import uuid
 
+import anyio
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.errors import error_response
-from app.logging_setup import actor_var, request_id_var
+from app.logging_setup import DEFAULT_ACTOR, actor_var, request_id_var
 
 logger = logging.getLogger("app.request")
 
-DEFAULT_ACTOR = "Dana"  # BUILD_PROMPT §8.5: X-Actor defaults to "Dana"
 _MAX_ACTOR_LEN = 80
 # Accept a caller's request id only if it is short and harmless (it ends up in logs).
 _SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
@@ -93,14 +93,16 @@ class RequestContextMiddleware:
                 MutableHeaders(scope=message)["X-Request-ID"] = request_id
             await send(message)
 
+        error_details: dict | None = None
         try:
             await self.app(scope, receive, send_with_request_id)
-        except Exception:
+        except Exception as error:
             # Stack trace goes to the logs; Dana sees a plain message plus the reference id.
             logger.exception(
                 "unhandled error",
                 extra={"method": scope.get("method"), "path": scope.get("path")},
             )
+            error_details = {"request_id": request_id, "path": scope.get("path"), "error": repr(error)[:500]}
             if response_started:  # too late to send a clean error; let the server close it
                 raise
             response = error_response(
@@ -112,16 +114,35 @@ class RequestContextMiddleware:
             )
             await response(scope, receive, send_with_request_id)
         finally:
-            _log_request(scope, status_code, (time.perf_counter() - start) * 1000)
+            duration_ms = (time.perf_counter() - start) * 1000
+            _log_request(scope, status_code, duration_ms)
+            # Logging layer 1 in the database: one request_log row (and an event for a crash).
+            # Runs after the response has been sent, in a worker thread, and never raises.
+            if scope.get("method") != "OPTIONS":
+                row = {
+                    "request_id": request_id,
+                    "method": scope.get("method", ""),
+                    "path": scope.get("path", "")[:500],
+                    "status": status_code,
+                    "duration_ms": round(duration_ms, 1),
+                    "actor": actor,
+                }
+                await anyio.to_thread.run_sync(_write_logs, row, error_details)
             request_id_var.reset(rid_token)
             actor_var.reset(actor_token)
 
 
-def _log_request(scope: Scope, status: int, duration_ms: float) -> None:
-    """One structured line per request (request_id and actor are added by ContextFilter).
+def _write_logs(row: dict, error_details: dict | None) -> None:
+    # Imported here to avoid an import cycle (services import the request context from here).
+    from app.services.audit import write_error_event, write_request_log
 
-    Phase 4: also queue a `request_log` row here.
-    """
+    write_request_log(row)
+    if error_details is not None:
+        write_error_event(error_details)
+
+
+def _log_request(scope: Scope, status: int, duration_ms: float) -> None:
+    """One structured line per request (request_id and actor are added by ContextFilter)."""
     level = logging.WARNING if status >= 500 else logging.INFO
     logger.log(
         level,

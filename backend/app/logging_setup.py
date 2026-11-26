@@ -33,6 +33,8 @@ from urllib.parse import urlsplit
 
 from pythonjsonlogger.json import JsonFormatter
 
+DEFAULT_ACTOR = "Dana"  # BUILD_PROMPT §8.5: X-Actor defaults to "Dana" (no login in v1, ADR-011)
+
 # Context for the current request. Defaults apply outside a request (loader CLI, startup).
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 actor_var: ContextVar[str | None] = ContextVar("actor", default=None)

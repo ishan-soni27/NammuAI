@@ -229,6 +229,7 @@ class ItemPlan:
     item: ItemInput
     lifecycle_status: str  # after any override
     vendor_name: str
+    vendor_country: str | None
     lead_time_days: int
     lead_time_source: str  # "Dana", "BlueTide", "default"
     lead_time_days_system: int | None

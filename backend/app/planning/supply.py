@@ -211,3 +211,28 @@ def incoming_for_item(
         )
     dated.sort(key=lambda i: (i.eta or date.max, i.reference))
     return dated, late
+
+
+def lot_status(
+    lot: LotInput, location: LocationInput | None, as_of: date, six_month_line: date
+) -> tuple[bool, str]:
+    """(counted as sellable?, why) for one lot, in Dana's words, for the item drill-down (§9.3)."""
+    if lot.qty is None:
+        return False, "Not counted: no pounds-per-case to convert this lot (see Data notes)."
+    if location is None:
+        return False, "Not counted: unknown location."
+    if not location.is_sellable:
+        if location.may_return_to_stock:
+            return False, "On QA hold: may come back, but can't be sold until it's released. Not counted."
+        return False, "Damaged: not counted."
+    if lot.is_adjustment:
+        return True, "Stock adjustment: netted against what you can sell."
+    if lot.expiry_date is not None and lot.expiry_date < as_of:
+        return False, f"Expired {lot.expiry_date:%b %d, %Y}: not counted, a write-off."
+    if lot.expiry_date is not None and lot.expiry_date < six_month_line:
+        return (
+            True,
+            f"Counted, but inside the six-month line (expires {lot.expiry_date:%b %d, %Y}): "
+            "discount or move it.",
+        )
+    return True, "Counted."

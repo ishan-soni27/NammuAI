@@ -138,6 +138,7 @@ def plan(inputs: PlanningInputs, rules: BusinessRules) -> PlanResult:
                 item=item,
                 lifecycle_status=lifecycle[code],
                 vendor_name=vendor_name,
+                vendor_country=vendor.country if vendor else None,
                 lead_time_days=lead,
                 lead_time_source=lead_source,
                 lead_time_days_system=vendor.lead_time_days_system if vendor else None,

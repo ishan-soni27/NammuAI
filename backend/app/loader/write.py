@@ -54,10 +54,25 @@ from app.db.models import (
     Vendor,
     VendorSetting,
 )
+from app.db.sql import utc_now
 from app.loader.types import LoadResult, SourceRef, VendorSettingSeed
 
 logger = logging.getLogger("app.loader")
 
+# Parents before children (the order write_load inserts the clean tables in).
+CLEAN_LAYER_INSERT_ORDER = (
+    "locations",
+    "vendors",
+    "customers",
+    "items",
+    "item_aliases",
+    "excluded_orders",
+    "inventory_lots",
+    "sales_lines",
+    "purchase_order_lines",
+    "prices",
+    "stockout_periods",
+)
 GENERAL_SOURCE = "(general)"  # data_issues.source_file for issues not tied to one CSV row
 # Upper bound for any single statement during a load (Postgres interval syntax). Generous on purpose:
 # a load is a rare, attended, all-or-nothing job, and a timeout just rolls it back.
@@ -93,6 +108,9 @@ def _copy_rows(conn: Connection, table: Table, rows: list[dict[str, Any]]) -> No
     which the loader uses; the transaction pooler doesn't support COPY.
     """
     if not rows:
+        return
+    if conn.dialect.name != "postgresql":
+        conn.execute(insert(table), rows)  # tests: SQLite has no COPY; a plain bulk insert is fine
         return
     columns = list(rows[0].keys())
     driver = conn.connection.driver_connection  # the psycopg connection under SQLAlchemy
@@ -144,7 +162,7 @@ def fail_load_run(engine: Engine, run_id: int, error: BaseException) -> None:
         conn.execute(
             update(LoadRun.__table__)
             .where(LoadRun.__table__.c.id == run_id)
-            .values(status="failed", finished_at=func.clock_timestamp(), summary={"error": message})
+            .values(status="failed", finished_at=utc_now(), summary={"error": message})
         )
         conn.execute(
             insert(EventLog.__table__).values(
@@ -169,7 +187,8 @@ def write_load(
         # Supabase cancels any statement running longer than 2 minutes. Streaming ~16,500 raw
         # rows from a slow home connection can take longer, so lift that limit for THIS
         # transaction only (SET LOCAL ends with the transaction). The API keeps the default.
-        conn.execute(text(f"SET LOCAL statement_timeout = '{LOAD_STATEMENT_TIMEOUT}'"))
+        if conn.dialect.name == "postgresql":
+            conn.execute(text(f"SET LOCAL statement_timeout = '{LOAD_STATEMENT_TIMEOUT}'"))
 
         # 1. Raw layer: every CSV row exactly as exported, kept per load run.
         raw_rows = [
@@ -194,7 +213,11 @@ def write_load(
         raw_ids = {(file, line): row_id for row_id, file, line in returned}
 
         # 2. Clean layer: rebuilt from scratch (explicit list, no CASCADE; see module docstring).
-        conn.execute(text("TRUNCATE TABLE " + ", ".join(CLEAN_LAYER)))
+        if conn.dialect.name == "postgresql":
+            conn.execute(text("TRUNCATE TABLE " + ", ".join(CLEAN_LAYER)))
+        else:  # tests on SQLite: same effect, children before parents
+            for name in reversed(CLEAN_LAYER_INSERT_ORDER):
+                conn.execute(text(f"DELETE FROM {name}"))
         clean_inserts: list[tuple[Table, list[dict[str, Any]]]] = [
             (Location.__table__, [_row(x) for x in d.locations]),
             (Vendor.__table__, [_row(x, raw_ids) for x in d.vendors]),
@@ -277,9 +300,7 @@ def write_load(
         conn.execute(
             update(LoadRun.__table__)
             .where(LoadRun.__table__.c.id == run_id)
-            .values(
-                status="succeeded", finished_at=func.clock_timestamp(), summary=_summary_json(result, summary)
-            )
+            .values(status="succeeded", finished_at=utc_now(), summary=_summary_json(result, summary))
         )
         conn.execute(
             insert(EventLog.__table__).values(

@@ -70,10 +70,24 @@ def make_engine(url: str, *, pooled: bool = True, connect_timeout: int = 5) -> E
     )
 
 
+_override_engine: Engine | None = None
+
+
+def use_engine(engine: Engine | None) -> None:
+    """Point the whole app at a different engine (tests: an in-memory SQLite copy; None resets)."""
+    global _override_engine
+    _override_engine = engine
+    get_sessionmaker.cache_clear()
+
+
 @lru_cache
-def get_engine() -> Engine:
-    """The process-wide engine, created on first use."""
+def _default_engine() -> Engine:
     return make_engine(get_settings().database_url)
+
+
+def get_engine() -> Engine:
+    """The process-wide engine, created on first use (or the test override)."""
+    return _override_engine if _override_engine is not None else _default_engine()
 
 
 @lru_cache

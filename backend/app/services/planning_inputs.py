@@ -1,8 +1,11 @@
 """Build the planning engine's inputs from loaded data.
 
-Phase 3: from the loader's clean dataset (no database), used by the golden tests and
-scripts/compare_answer_key.py. Phase 4 adds the same mapping from database rows (and Dana's
-app-layer edits: vendor settings, ETA overrides, handled notes, item settings) for the API.
+Two sources, one shape (PlanningInputs):
+  - inputs_from_dataset: the loader's clean dataset, no database (golden tests, scripts).
+  - inputs_from_db:      the database, for the API (Phase 4). The BlueTide part (clean layer) only
+                         changes when the loader runs, so it is cached per load run; Dana's edits
+                         (app layer: vendor settings, PO dates, handled notes, item settings) are
+                         read fresh on every request, so a change shows up immediately (ADR-004).
 
 Only REAL demand reaches the engine (§6.2: no transfers, samples, credits, cancellations, the
 cruise one-off or fresh), and only open PO lines with something still to come (T25).
@@ -10,6 +13,14 @@ cruise one-off or fresh), and only open PO lines with something still to come (T
 
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
+from datetime import date, datetime
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.config.business_rules import BusinessRules
+from app.db import models as m
 from app.loader.types import CleanDataset, VendorSettingSeed
 from app.planning.types import (
     EtaOverrideInput,
@@ -106,3 +117,168 @@ def inputs_from_dataset(
             StockoutInput(s.item_code, s.start_date, s.end_date) for s in dataset.stockout_periods
         ),
     )
+
+
+# ---- From the database -------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LoadInfo:
+    load_run_id: int | None
+    snapshot_date: date | None  # the on-hand snapshot the numbers are based on
+    finished_at: datetime | None
+
+
+_clean_cache: dict[int, PlanningInputs] = {}  # latest load run id -> clean-layer inputs (size 1)
+
+
+def latest_load(session: Session) -> LoadInfo:
+    """The most recent successful load: its id keys the cache; the snapshot date is shown on screen."""
+    row = session.execute(
+        select(m.LoadRun.id, m.LoadRun.finished_at, m.LoadRun.summary)
+        .where(m.LoadRun.status == "succeeded")
+        .order_by(m.LoadRun.id.desc())
+        .limit(1)
+    ).first()
+    if row is None:
+        return LoadInfo(None, None, None)
+    snapshot = (row.summary or {}).get("snapshot_date")
+    return LoadInfo(row.id, date.fromisoformat(snapshot) if snapshot else None, row.finished_at)
+
+
+def _clean_inputs_from_db(session: Session) -> PlanningInputs:
+    """The BlueTide side: items, vendors, locations, lots, real demand, open POs, stockouts."""
+    items = session.scalars(select(m.Item)).all()
+    customers = dict(session.execute(select(m.Customer.customer_code, m.Customer.name)).all())
+    sales = session.execute(
+        select(
+            m.SalesLine.item_code,
+            m.SalesLine.order_no,
+            m.SalesLine.customer_code,
+            m.SalesLine.order_date,
+            m.SalesLine.ship_date,
+            m.SalesLine.qty,
+            m.SalesLine.status,
+        ).where(m.SalesLine.demand_class == "real_demand")
+    ).all()
+    po_lines = session.scalars(
+        select(m.PurchaseOrderLine).where(
+            m.PurchaseOrderLine.status == "open", m.PurchaseOrderLine.qty_remaining_sell_uom > 0
+        )
+    ).all()
+    return PlanningInputs(
+        items=tuple(
+            ItemInput(
+                i.item_code,
+                i.description,
+                i.category,
+                i.sell_uom,
+                float(i.lb_per_case) if i.lb_per_case is not None else None,
+                i.vendor_code,
+                i.lifecycle_status,
+                i.lifecycle_reason,
+            )
+            for i in items
+        ),
+        vendors=tuple(
+            VendorInput(v.vendor_code, v.name, v.country, v.lead_time_days_system)
+            for v in session.scalars(select(m.Vendor)).all()
+        ),
+        vendor_settings=(),
+        item_settings=(),
+        locations=tuple(
+            LocationInput(x.code, x.is_sellable, x.may_return_to_stock, x.is_third_party_storage)
+            for x in session.scalars(select(m.Location)).all()
+        ),
+        lots=tuple(
+            LotInput(
+                x.item_code,
+                x.location_code,
+                x.lot_no,
+                float(x.qty_sell_uom) if x.qty_sell_uom is not None else None,
+                x.expiry_date,
+                x.is_adjustment,
+                float(x.unit_cost_sell_uom) if x.unit_cost_sell_uom is not None else None,
+            )
+            for x in session.scalars(select(m.InventoryLot)).all()
+        ),
+        sales=tuple(
+            SaleInput(
+                s.item_code,
+                s.order_no,
+                customers.get(s.customer_code, s.customer_code),
+                s.order_date,
+                s.ship_date,
+                float(s.qty),
+                s.status == "OPEN",
+            )
+            for s in sales
+        ),
+        po_lines=tuple(
+            POLineInput(
+                p.po_no,
+                p.line_no,
+                p.item_code,
+                p.vendor_code,
+                p.order_date,
+                p.expected_date_system,
+                float(p.qty_remaining_sell_uom),
+            )
+            for p in po_lines
+        ),
+        stockouts=tuple(
+            StockoutInput(s.item_code, s.start_date, s.end_date)
+            for s in session.scalars(select(m.StockoutPeriod)).all()
+        ),
+    )
+
+
+def inputs_from_db(session: Session, rules: BusinessRules) -> tuple[PlanningInputs, LoadInfo]:
+    """Engine inputs: cached BlueTide data for the latest load + Dana's current edits."""
+    load = latest_load(session)
+    key = load.load_run_id or 0
+    clean = _clean_cache.get(key)
+    if clean is None:
+        clean = _clean_inputs_from_db(session)
+        _clean_cache.clear()
+        _clean_cache[key] = clean
+    handled = session.scalars(select(m.HandledFlag).where(m.HandledFlag.cleared_at.is_(None))).all()
+    return (
+        replace(
+            clean,
+            vendor_settings=tuple(
+                VendorSettingInput(s.vendor_code, s.lead_time_days, s.safety_days, s.order_cycle_days)
+                for s in session.scalars(select(m.VendorSetting)).all()
+            ),
+            item_settings=tuple(
+                ItemSettingInput(s.item_code, s.lifecycle_override, s.safety_days_override)
+                for s in session.scalars(select(m.ItemSetting)).all()
+            ),
+            eta_overrides=tuple(
+                EtaOverrideInput(o.po_no, o.line_no, o.eta)
+                for o in session.scalars(select(m.PoEtaOverride)).all()
+            ),
+            handled_notes=tuple(
+                # Notes are dated in BUSINESS time: "today" is AS_OF, never the clock (invariant #1).
+                HandledNoteInput(
+                    h.id,
+                    h.item_code,
+                    float(h.qty) if h.qty is not None else None,
+                    h.eta,
+                    h.note,
+                    rules.as_of_date,
+                )
+                for h in handled
+            ),
+        ),
+        load,
+    )
+
+
+def clear_cache() -> None:
+    """Forget cached BlueTide inputs (tests; a reload changes the load run id anyway)."""
+    _clean_cache.clear()
+
+
+def count_rows(session: Session, model: type) -> int:
+    return int(session.execute(select(func.count()).select_from(model)).scalar_one())

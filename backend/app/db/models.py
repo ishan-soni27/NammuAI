@@ -53,6 +53,13 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.types import JSON
+
+# Postgres types, with plain equivalents for SQLite so the API test suite can run on an
+# in-memory database (there is no local Postgres; ADR-023). On Postgres these render exactly
+# as before (BIGINT identity, JSONB), so the migration is unchanged.
+JSON_DOC = JSON().with_variant(JSONB(), "postgresql")
+BIG_ID = BigInteger().with_variant(Integer(), "sqlite")  # SQLite only autoincrements INTEGER keys
 
 # Predictable constraint names, so migrations are reviewable and reversible.
 NAMING_CONVENTION = {
@@ -98,14 +105,14 @@ class Base(DeclarativeBase):
         Decimal: Numeric(14, 4),
         datetime: DateTime(timezone=True),
         date: Date(),
-        dict[str, Any]: JSONB(),
-        list[dict[str, Any]]: JSONB(),
+        dict[str, Any]: JSON_DOC,
+        list[dict[str, Any]]: JSON_DOC,
     }
 
 
 def _pk() -> Mapped[int]:
     """Surrogate bigint identity primary key."""
-    return mapped_column(BigInteger, Identity(), primary_key=True)
+    return mapped_column(BIG_ID, Identity(), primary_key=True)
 
 
 def _created_now() -> Mapped[datetime]:
@@ -115,7 +122,7 @@ def _created_now() -> Mapped[datetime]:
 
 def _raw_row_fk() -> Mapped[int | None]:
     """Pointer back to the exact CSV row this clean row came from (traceability, ADR-003)."""
-    return mapped_column(BigInteger, ForeignKey("raw_rows.id"))
+    return mapped_column(BIG_ID, ForeignKey("raw_rows.id"))
 
 
 # =====================================================================================
@@ -455,7 +462,7 @@ class DataIssue(Base):
     load_run_id: Mapped[int] = mapped_column(ForeignKey("load_runs.id", ondelete="CASCADE"))
     source_file: Mapped[str]
     source_line_number: Mapped[int | None] = mapped_column(Integer)
-    raw_row_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("raw_rows.id", ondelete="CASCADE"))
+    raw_row_id: Mapped[int | None] = mapped_column(BIG_ID, ForeignKey("raw_rows.id", ondelete="CASCADE"))
     trap_id: Mapped[str | None]  # "T01".."T31"
     rule_code: Mapped[str]  # e.g. "older_snapshot_row"
     severity: Mapped[str]
@@ -479,8 +486,8 @@ class AuditLog(Base):
     action: Mapped[str]  # e.g. "vendor_settings.update"
     entity_type: Mapped[str]
     entity_id: Mapped[str]
-    before: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    after: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    before: Mapped[dict[str, Any] | None] = mapped_column(JSON_DOC)
+    after: Mapped[dict[str, Any] | None] = mapped_column(JSON_DOC)
     request_id: Mapped[str | None]
 
 
@@ -499,7 +506,7 @@ class EventLog(Base):
     source: Mapped[str]
     event: Mapped[str]
     request_id: Mapped[str | None]
-    details: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    details: Mapped[dict[str, Any] | None] = mapped_column(JSON_DOC)
 
 
 class RequestLog(Base):

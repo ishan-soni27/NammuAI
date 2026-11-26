@@ -22,7 +22,8 @@ def get_database_health() -> DatabaseHealth:
     return check_database()
 
 
-@router.api_route("/health", methods=["GET", "HEAD"], response_model=HealthResponse)
+@router.get("/health", response_model=HealthResponse)
+@router.head("/health", include_in_schema=False)  # uptime monitors; one documented operation only
 def health(
     db_health: DatabaseHealth = Depends(get_database_health),
     rules: BusinessRules = Depends(get_business_rules),

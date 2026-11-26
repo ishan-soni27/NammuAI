@@ -24,12 +24,12 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.config.business_rules import get_business_rules  # noqa: E402
 from app.config.settings import get_settings  # noqa: E402
-from app.db.session import get_engine, get_sessionmaker  # noqa: E402
+from app.db.session import _default_engine, get_sessionmaker  # noqa: E402
 
 
 def clear_config_caches() -> None:
     """Forget cached settings/rules/engine so the next call re-reads the environment."""
-    for cached in (get_settings, get_business_rules, get_engine, get_sessionmaker):
+    for cached in (get_settings, get_business_rules, _default_engine, get_sessionmaker):
         cached.cache_clear()
 
 
