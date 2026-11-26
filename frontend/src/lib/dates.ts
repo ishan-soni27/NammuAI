@@ -25,3 +25,8 @@ export function formatShortDate(isoDate: string): string {
 export function formatTimestamp(isoTimestamp: string): string {
   return format(parseISO(isoTimestamp), "MMM d, yyyy, h:mm a");
 }
+
+/** "May 25, 2028": for expiry dates, which are often a year or two away. */
+export function formatDateWithYear(isoDate: string): string {
+  return format(parseBusinessDate(isoDate), "MMM d, yyyy");
+}

@@ -18,6 +18,8 @@ import { MondayPage } from "./pages/MondayPage";
 import { NewPOPage } from "./pages/NewPOPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage";
+import { NewShipmentPage } from "./pages/NewShipmentPage";
+import { ShipmentsPage } from "./pages/ShipmentsPage";
 
 const ItemPage = lazy(() => import("./pages/ItemPage").then((m) => ({ default: m.ItemPage })));
 
@@ -42,6 +44,8 @@ export function App() {
             <Route path="/items/:code" element={<ItemPage />} />
             <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
             <Route path="/purchase-orders/new" element={<NewPOPage />} />
+            <Route path="/shipments" element={<ShipmentsPage />} />
+            <Route path="/shipments/new" element={<NewShipmentPage />} />
             <Route path="/suppliers" element={<LeadTimesPage />} />
             <Route path="/lead-times" element={<Navigate to="/suppliers" replace />} />
             <Route path="/data-notes" element={<DataNotesPage />} />

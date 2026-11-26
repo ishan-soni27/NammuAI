@@ -10,6 +10,7 @@ POST /shipments/{order_no}/ship             ship it (those picks, or the ones Da
 POST /shipments/{order_no}/cancel           cancel an open order
 POST /shipments/{order_no}/undo-ship        it didn't go: picks back into their lots, order open again
 GET  /stock-lots?item=CODE                  an item's lots as the plan counts them now
+GET  /stock-movements?item=CODE             Dana's stock changes for an item (with what can be undone)
 POST /stock-moves                           move stock between buildings (e.g. Harbor -> New Bedford)
 
 Matching with BlueTide's orders: planning/records.py (R7-R10). Every write is audited.
@@ -116,6 +117,13 @@ def stock_lots(
     rules: BusinessRules = Depends(get_business_rules),
 ) -> list[s.StockLotOut]:
     return svc.stock_lots(db, rules, planning_service.resolve_item_code(db, item))
+
+
+@router.get("/stock-movements", response_model=list[s.StockChangeOut])
+def stock_changes(
+    item: str = Query(min_length=1, max_length=40), db: Session = Depends(get_db)
+) -> list[s.StockChangeOut]:
+    return svc.stock_changes(db, planning_service.resolve_item_code(db, item))
 
 
 @router.post("/stock-moves", response_model=list[s.MovementOut], status_code=201)

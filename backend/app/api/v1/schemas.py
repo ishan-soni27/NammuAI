@@ -744,3 +744,21 @@ class StockLotOut(BaseModel):
     unit_cost: float | None
     counted: bool
     at_harbor: bool
+
+
+class StockChangeOut(BaseModel):
+    """One of Dana's stock changes for an item (receipt, pick, move, adjustment), newest first."""
+
+    id: int
+    movement_date: date
+    kind: str
+    location_code: str
+    lot_no: str
+    qty: float
+    po_no: str | None
+    order_no: str | None
+    note: str | None
+    created_by: str
+    undone: bool
+    is_undo: bool
+    can_undo: bool  # receipts and moves undo here; a shipment's picks undo with the order

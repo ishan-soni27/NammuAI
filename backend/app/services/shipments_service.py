@@ -664,3 +664,32 @@ def move_stock(db: Session, rules: BusinessRules, body: s.MoveIn) -> list[s.Move
         )
         for x in (out_row, in_row)
     ]
+
+
+def stock_changes(db: Session, item_code: str) -> list[s.StockChangeOut]:
+    """Every stock change Dana made for an item, newest first, with what can still be undone."""
+    rows = db.scalars(select(m.StockMovement).where(m.StockMovement.item_code == item_code)).all()
+    undone = {r.reverses_id for r in rows if r.reverses_id is not None}
+    orders = dict(db.execute(select(m.Shipment.id, m.Shipment.order_no)).all())
+    out = [
+        s.StockChangeOut(
+            id=r.id,
+            movement_date=r.movement_date,
+            kind=r.kind,
+            location_code=r.location_code,
+            lot_no=r.lot_no,
+            qty=float(r.qty),
+            po_no=r.po_no,
+            order_no=orders.get(r.shipment_id) if r.shipment_id else None,
+            note=r.note,
+            created_by=r.created_by,
+            undone=r.id in undone,
+            is_undo=r.reverses_id is not None,
+            can_undo=r.reverses_id is None
+            and r.id not in undone
+            and r.shipment_id is None
+            and r.kind in ("receipt", "move_out", "adjustment"),
+        )
+        for r in rows
+    ]
+    return sorted(out, key=lambda x: (x.movement_date, x.id), reverse=True)

@@ -5,11 +5,14 @@
  * every month) first and badged.
  * Fed by: Dashboard.stuck_items.
  */
+import { useState } from "react";
 import { Link } from "react-router";
-import type { StuckItem, StuckTag } from "../api/types";
+import { useLocations } from "../api/queries";
+import type { StuckItem, StuckLot, StuckTag } from "../api/types";
 import { formatShortDate } from "../lib/dates";
 import { money, qty } from "../lib/format";
 import { itemName } from "../lib/names";
+import { MoveStockDialog } from "./MoveStockDialog";
 import { HarborBadge, TAG_LABEL, TagChip } from "./StatusChip";
 import { Term } from "./Term";
 
@@ -24,6 +27,9 @@ const TAG_ORDER: StuckTag[] = [
 function StuckRow({ item }: { item: StuckItem }) {
   const lots = [...item.lots].sort((a, b) => Number(b.at_harbor) - Number(a.at_harbor));
   const uom = item.sell_uom;
+  const [moving, setMoving] = useState<StuckLot | null>(null);
+  const locations = useLocations();
+  const home = (locations.data ?? []).find((l) => l.is_sellable && !l.is_third_party_storage);
   return (
     <details className="group">
       <summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 px-4 py-3 hover:bg-ice">
@@ -63,10 +69,19 @@ function StuckRow({ item }: { item: StuckItem }) {
                 {lot.expiry_date &&
                   `, expires ${formatShortDate(lot.expiry_date)} ${lot.expiry_date.slice(0, 4)}`}
               </p>
-              <div className="mt-1 flex flex-wrap gap-1">
+              <div className="mt-1 flex flex-wrap items-center gap-1">
                 {lot.tags.map((t) => (
                   <TagChip key={t} tag={t} />
                 ))}
+                {lot.at_harbor && home && (
+                  <button
+                    type="button"
+                    onClick={() => setMoving(lot)}
+                    className="ml-auto rounded-md border border-ink bg-hull px-2 py-0.5 text-xs font-semibold hover:bg-ice"
+                  >
+                    Move to {home.name}
+                  </button>
+                )}
               </div>
             </li>
           ))}
@@ -78,6 +93,19 @@ function StuckRow({ item }: { item: StuckItem }) {
           See all the numbers
         </Link>
       </div>
+      {moving && (
+        <MoveStockDialog
+          itemCode={item.item_code}
+          itemLabel={itemName(item.description)}
+          fromLocation={moving.location_code}
+          fromName={moving.location_name}
+          lotNo={moving.lot_no}
+          maxQty={moving.qty}
+          uom={uom}
+          defaultTo={home?.code}
+          onClose={() => setMoving(null)}
+        />
+      )}
     </details>
   );
 }

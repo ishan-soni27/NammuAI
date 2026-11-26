@@ -17,6 +17,21 @@ const ACTION: Record<string, string> = {
   "po_eta.clear": "Cleared an arrival date",
   "vendor_settings.update": "Changed supplier terms",
   "item_settings.update": "Changed item settings",
+  "purchase_order.create": "Created a PO",
+  "po_line.ship": "Marked a PO line shipped",
+  "po_line.cancel": "Cancelled a PO line",
+  "po_line.reopen": "Reopened a PO line",
+  "stock.receive": "Received stock",
+  "stock.undo": "Undid a stock change",
+  "stock.move": "Moved stock",
+  "shipment.create": "Logged an order",
+  "shipment.ship": "Shipped an order",
+  "shipment.cancel": "Cancelled an order",
+  "shipment.undo_ship": "Undid a shipment",
+  "customer.create": "Added a customer",
+  "vendor.create": "Added a supplier",
+  "item.create": "Added an item",
+  "item.update": "Changed item details",
 };
 
 const show = (v: unknown) =>

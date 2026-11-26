@@ -457,3 +457,89 @@ export interface Location {
   is_third_party_storage: boolean;
   can_receive: boolean;
 }
+
+// ---- Shipments and moving stock (Phase 6 step 2) -------------------------------------------
+
+export interface Customer {
+  customer_code: string;
+  name: string;
+  customer_type: string;
+  source: RecordSource;
+}
+
+export interface Pick {
+  line_no: number;
+  item_code: string;
+  location_code: string;
+  location_name: string;
+  lot_no: string;
+  expiry_date: string | null;
+  qty: number;
+}
+
+export interface PickPlan {
+  picks: Pick[];
+  short: Record<string, number>;
+}
+
+export interface ShipmentLine {
+  line_no: number;
+  item_code: string;
+  description: string;
+  sell_uom: string;
+  qty: number;
+  unit_price: number | null;
+  promised: boolean;
+  taken_from_stock: boolean;
+  counts_as_demand: boolean;
+  flags: string[];
+  picks: Pick[];
+}
+
+/** GET /shipments */
+export interface Shipment {
+  order_no: string;
+  customer_code: string;
+  customer_name: string;
+  kind: "customer" | "sample";
+  order_date: string;
+  ship_date: string;
+  location_code: string;
+  location_name: string;
+  status: "open" | "shipped" | "cancelled";
+  shipped_on: string | null;
+  cancel_reason: string | null;
+  note: string | null;
+  created_by: string;
+  lines: ShipmentLine[];
+}
+
+/** GET /stock-lots?item= */
+export interface StockLot {
+  item_code: string;
+  location_code: string;
+  location_name: string;
+  lot_no: string;
+  qty: number;
+  expiry_date: string | null;
+  unit_cost: number | null;
+  counted: boolean;
+  at_harbor: boolean;
+}
+
+/** GET /stock-movements?item= */
+export interface StockChange {
+  id: number;
+  movement_date: string;
+  kind: string;
+  location_code: string;
+  lot_no: string;
+  qty: number;
+  po_no: string | null;
+  order_no: string | null;
+  note: string | null;
+  created_by: string;
+  undone: boolean;
+  is_undo: boolean;
+  can_undo: boolean;
+}

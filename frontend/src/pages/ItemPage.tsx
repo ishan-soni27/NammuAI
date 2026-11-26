@@ -11,10 +11,11 @@
 import { format } from "date-fns";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
-import { useItem, useUpdateItemSettings } from "../api/queries";
-import type { Incoming, ItemDetail } from "../api/types";
+import { useItem, useStockChanges, useUndoMovement, useUpdateItemSettings } from "../api/queries";
+import type { Incoming, ItemDetail, Lot } from "../api/types";
 import { HandledNoteView } from "../components/HandledNoteView";
 import { MarkHandledDialog } from "../components/MarkHandledDialog";
+import { MoveStockDialog } from "../components/MoveStockDialog";
 import { ProjectionChart, ProjectionTable } from "../components/ProjectionChart";
 import { QueryState } from "../components/QueryState";
 import { SetPoDate } from "../components/SetPoDate";
@@ -68,6 +69,98 @@ function arrivalCell(line: Incoming) {
       )}
       <div className="text-fog">{line.eta_source}</div>
     </>
+  );
+}
+
+function LotMoveButton({
+  lot,
+  itemCode,
+  itemLabel,
+  uom,
+}: {
+  lot: Lot;
+  itemCode: string;
+  itemLabel: string;
+  uom: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-1 block text-sm font-semibold underline underline-offset-2"
+      >
+        Move
+      </button>
+      {open && (
+        <MoveStockDialog
+          itemCode={itemCode}
+          itemLabel={itemLabel}
+          fromLocation={lot.location_code}
+          fromName={lot.location_name}
+          lotNo={lot.lot_no}
+          maxQty={lot.qty ?? 0}
+          uom={uom}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+const CHANGE_WORDS: Record<string, string> = {
+  receipt: "Received",
+  shipment: "Shipped",
+  sample: "Sample sent",
+  move_out: "Moved out of",
+  move_in: "Moved into",
+  adjustment: "Adjusted",
+};
+
+function StockChanges({ code, uom }: { code: string; uom: string }) {
+  const changes = useStockChanges(code);
+  const undo = useUndoMovement();
+  const rows = (changes.data ?? []).filter((c) => !c.is_undo);
+  if (rows.length === 0) return null;
+  return (
+    <Card title="Stock changes in the app">
+      <Table head={["When", "What", "Quantity", "By", ""]}>
+        {rows.map((c) => (
+          <tr key={c.id} className={c.undone ? "text-fog line-through" : ""}>
+            <td className={td}>{formatShortDate(c.movement_date)}</td>
+            <td className={td}>
+              {CHANGE_WORDS[c.kind] ?? c.kind} {c.location_code}, lot {c.lot_no}
+              {c.po_no && ` (${c.po_no})`}
+              {c.order_no && ` (order ${c.order_no})`}
+              {c.undone && <span className="no-underline"> (undone)</span>}
+            </td>
+            <td className={td}>{qty(Math.abs(c.qty), uom)}</td>
+            <td className={td}>{c.created_by}</td>
+            <td className={td}>
+              {c.can_undo && (
+                <button
+                  type="button"
+                  disabled={undo.isPending}
+                  onClick={() => undo.mutate({ id: c.id, reason: null })}
+                  className="text-sm font-semibold underline underline-offset-2"
+                >
+                  Undo
+                </button>
+              )}
+              {!c.can_undo && c.order_no && !c.undone && (
+                <Link
+                  to={`/shipments?status=all&order=${encodeURIComponent(c.order_no)}`}
+                  className="text-sm underline"
+                >
+                  Undo on the order
+                </Link>
+              )}
+            </td>
+          </tr>
+        ))}
+      </Table>
+    </Card>
   );
 }
 
@@ -266,6 +359,17 @@ function Item({ detail }: { detail: ItemDetail }) {
                 <td className={td}>{money(lot.value_at_cost)}</td>
                 <td className={td}>
                   {lot.counted ? "Yes" : `No: ${lot.reason}`}
+                  {lot.counted && lot.reason.includes("in the app") && (
+                    <div className="text-fog">{lot.reason.replace(/^Counted\.\s*/, "")}</div>
+                  )}
+                  {(lot.qty ?? 0) > 0 && (
+                    <LotMoveButton
+                      lot={lot}
+                      itemCode={card.item_code}
+                      itemLabel={itemName(card.description)}
+                      uom={uom}
+                    />
+                  )}
                   {lot.stuck_tags.length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">
                       {lot.stuck_tags.map((t) => (
@@ -383,6 +487,8 @@ function Item({ detail }: { detail: ItemDetail }) {
           </Table>
         )}
       </Card>
+
+      <StockChanges code={card.item_code} uom={uom} />
 
       <Card title="Item settings">
         <SettingsForm key={detail.settings?.updated_at ?? "none"} detail={detail} />

@@ -105,3 +105,23 @@ export function SourceBadge({ source }: { source: "app" | "bluetide" | "both" })
     </span>
   );
 }
+
+const SHIPMENT_STATUS: Record<string, { label: string; icon: string; className: string }> = {
+  overdue: { label: "Overdue", icon: "⚠", className: "bg-red text-hull" },
+  open: { label: "Open", icon: "○", className: "bg-grey-tint text-grey" },
+  shipped: { label: "Shipped", icon: "✓", className: "bg-green text-hull" },
+  cancelled: { label: "Cancelled", icon: "✕", className: "bg-grey-tint text-grey" },
+};
+
+/** An order going out: overdue (open past its ship date) is red, shipped is green, the rest grey. */
+export function ShipmentStatusChip({ status }: { status: string }) {
+  const s = SHIPMENT_STATUS[status] ?? SHIPMENT_STATUS.open!;
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-sm font-semibold ${s.className}`}
+    >
+      <span aria-hidden="true">{s.icon}</span>
+      {s.label}
+    </span>
+  );
+}

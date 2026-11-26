@@ -233,3 +233,25 @@ def test_a_shipment_pick_is_undone_with_the_order_not_on_its_own(api: TestClient
 def test_no_records_means_the_monday_numbers_are_unchanged(api: TestClient) -> None:
     s = api.get(f"{V}/dashboard").json()["summary"]
     assert (s["too_late"], s["order_this_week"], s["order_soon"], s["fine"]) == (3, 6, 5, 16)
+
+
+def test_stock_changes_list_says_what_can_be_undone(api: TestClient) -> None:
+    lot = _harbor_lot(api)
+    api.post(
+        f"{V}/stock-moves",
+        json={
+            "item_code": "SAL-POR6",
+            "from_location": "HCS",
+            "lot_no": lot["lot_no"],
+            "to_location": "NB",
+            "qty": 10,
+        },
+    )
+    changes = api.get(f"{V}/stock-movements", params={"item": "SAL-POR6"}).json()
+    kinds = {c["kind"]: c for c in changes}
+    assert (
+        kinds["move_out"]["can_undo"] and not kinds["move_in"]["can_undo"]
+    )  # undo the move from its "out" half
+    api.post(f"{V}/stock-movements/{kinds['move_out']['id']}/undo", json={})
+    after = api.get(f"{V}/stock-movements", params={"item": "SAL-POR6"}).json()
+    assert all(not c["can_undo"] for c in after) and sum(c["is_undo"] for c in after) == 2

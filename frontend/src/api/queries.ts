@@ -13,6 +13,11 @@ import { useToast } from "../components/Toast";
 import { ApiError, apiGet, apiSend } from "./client";
 import type {
   AuditEntry,
+  Customer,
+  PickPlan,
+  Shipment,
+  StockChange,
+  StockLot,
   Dashboard,
   DataIssuePage,
   DataIssueSummary,
@@ -46,6 +51,11 @@ export const keys = {
   purchaseOrders: (status: string, q: string) => ["purchase-orders", status, q] as const,
   itemDetails: ["item-details"] as const,
   locations: ["locations"] as const,
+  customers: ["customers"] as const,
+  shipments: (status: string, q: string) => ["shipments", status, q] as const,
+  picks: (orderNo: string) => ["picks", orderNo] as const,
+  stockLots: (item: string) => ["stock-lots", item] as const,
+  stockChanges: (item: string) => ["stock-changes", item] as const,
 };
 
 // ---- Reads ---------------------------------------------------------------------------------
@@ -134,6 +144,40 @@ export const useLocations = () =>
     staleTime: Infinity,
   });
 
+export const useCustomers = () =>
+  useQuery({
+    queryKey: keys.customers,
+    queryFn: ({ signal }) => apiGet<Customer[]>("/customers", signal),
+  });
+
+export const useShipments = (status: string, q: string) =>
+  useQuery({
+    queryKey: keys.shipments(status, q),
+    queryFn: ({ signal }) =>
+      apiGet<Shipment[]>(`/shipments?status=${enc(status)}&q=${enc(q)}`, signal),
+    placeholderData: (previous) => previous,
+  });
+
+export const usePickPlan = (orderNo: string, enabled: boolean) =>
+  useQuery({
+    queryKey: keys.picks(orderNo),
+    queryFn: ({ signal }) => apiGet<PickPlan>(`/shipments/${enc(orderNo)}/picks`, signal),
+    enabled,
+  });
+
+export const useStockLots = (item: string, enabled = true) =>
+  useQuery({
+    queryKey: keys.stockLots(item),
+    queryFn: ({ signal }) => apiGet<StockLot[]>(`/stock-lots?item=${enc(item)}`, signal),
+    enabled: enabled && Boolean(item),
+  });
+
+export const useStockChanges = (item: string) =>
+  useQuery({
+    queryKey: keys.stockChanges(item),
+    queryFn: ({ signal }) => apiGet<StockChange[]>(`/stock-movements?item=${enc(item)}`, signal),
+  });
+
 // ---- Edits ---------------------------------------------------------------------------------
 
 function refreshAfterEdit(client: QueryClient) {
@@ -145,6 +189,11 @@ function refreshAfterEdit(client: QueryClient) {
     ["purchase-orders"],
     keys.itemDetails,
     keys.vendors,
+    ["shipments"],
+    ["picks"],
+    ["stock-lots"],
+    ["stock-changes"],
+    keys.customers,
   ];
   for (const key of all) {
     void client.invalidateQueries({ queryKey: key });
@@ -340,4 +389,66 @@ export const useUpdateItemDetails = () =>
     ({ item_code, ...body }: Partial<ItemInputBody> & { item_code: string }) =>
       apiSend<ItemDetails>("PATCH", `/items/${enc(item_code)}/details`, body),
     (v) => `Saved ${v.item_code}`,
+  );
+
+// ---- Shipments and moving stock (Phase 6 step 2) ----------------------------------------------
+
+export const useCreateCustomer = () =>
+  useEdit(
+    (v: { name: string; customer_code: string | null; customer_type: string }) =>
+      apiSend<Customer>("POST", "/customers", v),
+    (_v, c) => `Added ${c.name}`,
+  );
+
+export interface ShipmentCreateInput {
+  customer_code: string;
+  order_no: string | null;
+  kind: "customer" | "sample";
+  order_date: string | null;
+  ship_date: string | null;
+  location_code: string;
+  note: string | null;
+  lines: { item_code: string; qty: number; unit_price: number | null }[];
+}
+
+export const useCreateShipment = () =>
+  useEdit(
+    (v: ShipmentCreateInput) => apiSend<Shipment>("POST", "/shipments", v),
+    (_v, sh) => `Saved order ${sh.order_no}`,
+  );
+
+export const useShipOrder = () =>
+  useEdit(
+    (v: { orderNo: string; picks: { line_no: number; lot_no: string; qty: number }[] | null }) =>
+      apiSend<Shipment>("POST", `/shipments/${enc(v.orderNo)}/ship`, { picks: v.picks }),
+    (v) => `Order ${v.orderNo} shipped`,
+  );
+
+export const useCancelOrder = () =>
+  useEdit(
+    (v: { orderNo: string; reason: string | null }) =>
+      apiSend<Shipment>("POST", `/shipments/${enc(v.orderNo)}/cancel`, { reason: v.reason }),
+    (v) => `Order ${v.orderNo} cancelled`,
+  );
+
+export const useUndoShip = () =>
+  useEdit(
+    (v: { orderNo: string }) =>
+      apiSend<Shipment>("POST", `/shipments/${enc(v.orderNo)}/undo-ship`, {}),
+    (v) => `Order ${v.orderNo} is open again`,
+  );
+
+export interface MoveInput {
+  item_code: string;
+  from_location: string;
+  lot_no: string;
+  to_location: string;
+  qty: number;
+  note: string | null;
+}
+
+export const useMoveStock = () =>
+  useEdit(
+    (v: MoveInput) => apiSend<Movement[]>("POST", "/stock-moves", v),
+    (v) => `Moved ${v.qty.toLocaleString("en-US")} of ${v.item_code} to ${v.to_location}`,
   );
