@@ -103,6 +103,12 @@ class BusinessRules:
         "she leaves the number blank, so they never clash with BlueTide's PO-...",
         source="Phase 6 plan (approved by Ishan 2026-11-26): auto PO numbers",
     )
+    app_shipment_prefix: str = _rule(
+        "SH-",
+        doc="Orders Dana logs in the app are numbered with this prefix (SH-00001, ...) when she leaves the "
+        "number blank, so they never clash with BlueTide's SO-...",
+        source="Phase 6 plan (approved by Ishan 2026-11-26): auto shipment numbers",
+    )
     fresh_code_prefix: str = _rule(
         "FR-",
         doc="Item codes starting with this are fresh fish from the day boats: out of scope.",

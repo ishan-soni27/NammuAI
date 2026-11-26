@@ -538,6 +538,35 @@ def undo_movement(db: Session, movement_id: int, body: s.UndoIn) -> s.MovementOu
         raise AppError(409, "is_an_undo", "That entry is itself an undo.")
     if db.execute(select(m.StockMovement.id).where(m.StockMovement.reverses_id == move.id)).first():
         raise AppError(409, "already_undone", "That has already been undone.")
+    if move.shipment_id is not None:
+        raise AppError(
+            409, "is_a_pick", 'That\'s part of a shipment. Use "Undo shipped" on the order instead.'
+        )
+    # A move has two halves (out of one building, into another): undo both together.
+    partner = None
+    if move.kind in ("move_out", "move_in"):
+        partner = db.execute(
+            select(m.StockMovement).where(
+                (m.StockMovement.id == move.pair_id) | (m.StockMovement.pair_id == move.id),
+                m.StockMovement.id != move.id,
+            )
+        ).scalar_one_or_none()
+    if partner is not None:
+        db.add(
+            m.StockMovement(
+                movement_date=partner.movement_date,
+                kind=partner.kind,
+                item_code=partner.item_code,
+                location_code=partner.location_code,
+                lot_no=partner.lot_no,
+                qty=-partner.qty,
+                expiry_date=partner.expiry_date,
+                unit_cost=partner.unit_cost,
+                reverses_id=partner.id,
+                note=body.reason,
+                created_by=current_actor(),
+            )
+        )
     rev = m.StockMovement(
         movement_date=move.movement_date,
         kind=move.kind,
@@ -560,7 +589,12 @@ def undo_movement(db: Session, movement_id: int, body: s.UndoIn) -> s.MovementOu
         action="stock.undo",
         entity_type="stock_movement",
         entity_id=str(move.id),
-        before={"qty": float(move.qty), "kind": move.kind, "lot_no": move.lot_no},
+        before={
+            "qty": float(move.qty),
+            "kind": move.kind,
+            "lot_no": move.lot_no,
+            "pair": partner.id if partner else None,
+        },
         after={"undone_by_movement": rev.id, "reason": body.reason},
     )
     db.commit()

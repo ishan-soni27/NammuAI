@@ -4,6 +4,7 @@
     items.py       Monday screen, items, drill-down, handled notes, item settings
     suppliers.py   lead times (vendors), new suppliers, PO arrival dates
     purchase_orders.py  POs (BlueTide's and Dana's), ship, cancel, receive, undo
+    shipments.py   customers, orders going out, picks, stock moves
     activity.py    data notes, audit log, events, load runs, settings, client events
 
 How to add an endpoint group: create `app/api/v1/<name>.py` with `router = APIRouter()`,
@@ -12,11 +13,12 @@ then include it below.
 
 from fastapi import APIRouter
 
-from app.api.v1 import activity, health, items, purchase_orders, suppliers
+from app.api.v1 import activity, health, items, purchase_orders, shipments, suppliers
 
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(items.router)
 api_router.include_router(suppliers.router)
 api_router.include_router(purchase_orders.router)
+api_router.include_router(shipments.router)
 api_router.include_router(activity.router)

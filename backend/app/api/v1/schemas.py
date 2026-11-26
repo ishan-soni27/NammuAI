@@ -624,3 +624,123 @@ class LocationOut(BaseModel):
     may_return_to_stock: bool
     is_third_party_storage: bool
     can_receive: bool  # sellable, or a hold that may come back (never Damaged)
+
+
+# ---- Shipments and moving stock (Phase 6 step 2) ------------------------------------------------
+
+
+class CustomerOut(BaseModel):
+    customer_code: str
+    name: str
+    customer_type: str
+    source: Literal["app", "bluetide", "both"]
+
+
+class CustomerCreateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    customer_code: str | None = Field(default=None, max_length=20)
+    customer_type: str = Field(min_length=1, max_length=30, description="RESTAURANT, GROCERY, ...")
+
+
+class ShipmentLineIn(BaseModel):
+    item_code: str = Field(min_length=1, max_length=30)
+    qty: float = Field(gt=0, description="In the item's selling unit (cases or lb).")
+    unit_price: float | None = Field(default=None, ge=0)
+
+
+class ShipmentCreateIn(BaseModel):
+    customer_code: str = Field(min_length=1, max_length=20)
+    order_no: str | None = Field(default=None, max_length=30, description="Blank: the next SH-number.")
+    kind: Literal["customer", "sample"] = "customer"
+    order_date: date | None = Field(default=None, description="Blank: today (the business date).")
+    ship_date: date | None = Field(default=None, description="When it's due to leave. Blank: today.")
+    location_code: str = Field(min_length=1, max_length=20, description="The building it ships from.")
+    note: str | None = Field(default=None, max_length=500)
+    lines: list[ShipmentLineIn] = Field(min_length=1, max_length=50)
+
+
+class PickOut(BaseModel):
+    line_no: int
+    item_code: str
+    location_code: str
+    location_name: str
+    lot_no: str
+    expiry_date: date | None
+    qty: float
+
+
+class PickIn(BaseModel):
+    line_no: int
+    lot_no: str = Field(min_length=1, max_length=40)
+    qty: float = Field(gt=0)
+
+
+class ShipIn(BaseModel):
+    shipped_on: date | None = Field(default=None, description="Blank: today (the business date).")
+    picks: list[PickIn] | None = Field(default=None, description="Blank: soonest to expire first.")
+
+
+class PickPlanOut(BaseModel):
+    """The lots that would be taken, soonest to expire first, and anything there isn't enough of."""
+
+    picks: list[PickOut]
+    short: dict[int, float]  # line_no -> what the building doesn't have
+
+
+class ShipmentLineOut(BaseModel):
+    line_no: int
+    item_code: str
+    description: str
+    sell_uom: str
+    qty: float
+    unit_price: float | None
+    promised: bool
+    taken_from_stock: bool
+    counts_as_demand: bool
+    flags: list[str]
+    picks: list[PickOut]
+
+
+class ShipmentOut(BaseModel):
+    order_no: str
+    customer_code: str
+    customer_name: str
+    kind: Literal["customer", "sample"]
+    order_date: date
+    ship_date: date
+    location_code: str
+    location_name: str
+    status: Literal["open", "shipped", "cancelled"]
+    shipped_on: date | None
+    cancel_reason: str | None
+    note: str | None
+    created_by: str
+    lines: list[ShipmentLineOut]
+
+
+class CancelIn(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class MoveIn(BaseModel):
+    item_code: str = Field(min_length=1, max_length=30)
+    from_location: str = Field(min_length=1, max_length=20)
+    lot_no: str = Field(min_length=1, max_length=40)
+    to_location: str = Field(min_length=1, max_length=20)
+    qty: float = Field(gt=0)
+    moved_on: date | None = Field(default=None, description="Blank: today (the business date).")
+    note: str | None = Field(default=None, max_length=500)
+
+
+class StockLotOut(BaseModel):
+    """A lot as the plan counts it now (BlueTide's count with Dana's changes applied)."""
+
+    item_code: str
+    location_code: str
+    location_name: str
+    lot_no: str
+    qty: float
+    expiry_date: date | None
+    unit_cost: float | None
+    counted: bool
+    at_harbor: bool
