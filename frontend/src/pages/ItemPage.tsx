@@ -326,14 +326,22 @@ function Item({ detail }: { detail: ItemDetail }) {
             <p className="text-fog">No open customer orders.</p>
           ) : (
             <Table head={["Order", "Customer", "Ships", "Quantity"]}>
-              {detail.promised.map((p) => (
-                <tr key={`${p.order_no}-${p.ship_date}`}>
-                  <td className={td}>{p.order_no}</td>
-                  <td className={td}>{p.customer_name}</td>
-                  <td className={td}>{p.ship_date ? formatShortDate(p.ship_date) : "No date"}</td>
-                  <td className={td}>{qty(p.qty, uom)}</td>
-                </tr>
-              ))}
+              {detail.promised.map((p) => {
+                // With a count older than the day shown (ADR-034), an order due to ship before today is
+                // taken as shipped in the estimate, so it's no longer counted as promised.
+                const shipped = Boolean(card.count_date) && (!p.ship_date || p.ship_date < asOf);
+                return (
+                  <tr key={`${p.order_no}-${p.ship_date}`} className={shipped ? "text-fog" : ""}>
+                    <td className={td}>{p.order_no}</td>
+                    <td className={td}>{p.customer_name}</td>
+                    <td className={td}>
+                      {p.ship_date ? formatShortDate(p.ship_date) : "No date"}
+                      {shipped && <div>shipped by now (estimated)</div>}
+                    </td>
+                    <td className={td}>{qty(p.qty, uom)}</td>
+                  </tr>
+                );
+              })}
             </Table>
           )}
         </Card>
