@@ -566,8 +566,8 @@ def build_locations(ref: ReferenceData) -> list[CleanLocation]:
 def latest_snapshot(raw: RawFile) -> date:
     """The newest stock count in the on-hand file (T01: the file holds two nights; the latest counts).
 
-    "Today" is the day after it (business_rules.rules_for_snapshot), so a load can work out its own
-    business date before any other rule runs.
+    A load's data date is the day after it (business_rules.rules_for_load), so a load can work out its
+    own business date before any other rule runs.
     """
     latest_text = max(record.get("snapshot_date").strip() for record in raw.records)
     latest = parse_business_date(latest_text)[0]

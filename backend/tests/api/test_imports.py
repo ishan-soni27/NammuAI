@@ -6,11 +6,13 @@ real working copies in data/raw (read, never modified: invariant #2).
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
 from app.config.settings import REPO_ROOT
 from app.loader.read_raw import RAW_FILES
+from tests.conftest import clear_config_caches
 
 V = "/api/v1"
 RAW = REPO_ROOT / "data" / "raw"
@@ -98,23 +100,45 @@ def _inventory_with(old: bytes, new: bytes) -> bytes:
     return (RAW / RAW_FILES["inventory_on_hand"]).read_bytes().replace(old, new)
 
 
-def test_a_newer_stock_count_moves_today_to_the_day_after_it(api: TestClient, db_engine: Engine) -> None:
-    # ADR-032: "today" follows the data. Next week's count (Sun Nov 22) makes today Mon Nov 23.
+def test_next_weeks_count_loads_and_its_data_date_is_the_day_after_it(
+    api: TestClient, db_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ADR-034: next week's count (Sun Nov 22) arrives when it IS next week: today is Mon Nov 23.
+    monkeypatch.setenv("AS_OF_DATE", "2026-11-23")
+    clear_config_caches()
+    before = api.get(f"{V}/health").json()
+    assert (before["as_of"], before["snapshot_date"], before["days_since_count"]) == (
+        "2026-11-23",
+        "2026-11-15",
+        8,
+    )
     upload = _start(api, "bluetide")
     shifted = _inventory_with(b"2026-11-15", b"2026-11-22").replace(b"2026-11-14", b"2026-11-21")
     _put(api, upload, "inventory_on_hand", shifted, "bluetide_inventory_on_hand.csv")
     checked = api.post(f"{V}/imports/{upload}/check").json()
     assert checked["report"]["blockers"] == [] and checked["confirm_code"]
-    assert checked["report"]["today"] == "2026-11-23"
-    assert api.get(f"{V}/health").json()["as_of"] == "2026-11-16"  # a check changes nothing
+    assert (checked["report"]["data_date"], checked["report"]["count_age_days"]) == ("2026-11-23", 1)
     loaded = api.post(f"{V}/imports/{upload}/load", json={"confirm_code": checked["confirm_code"]})
     assert loaded.status_code == 200, loaded.text
     health = api.get(f"{V}/health").json()
-    assert (health["as_of"], health["snapshot_date"]) == ("2026-11-23", "2026-11-22")
+    assert (health["as_of"], health["snapshot_date"], health["data_date"]) == (
+        "2026-11-23",
+        "2026-11-22",
+        "2026-11-23",
+    )
     assert api.get(f"{V}/dashboard").json()["as_of"] == "2026-11-23"
     with db_engine.connect() as conn:
         used = conn.execute(text("SELECT as_of_date FROM load_runs ORDER BY id DESC LIMIT 1")).scalar_one()
-    assert str(used) == "2026-11-23"  # the load's own rules (expiry, late POs) used the new today
+    assert str(used) == "2026-11-23"  # the load described its files as of their own data date
+
+
+def test_a_stock_count_dated_after_today_is_blocked(api: TestClient) -> None:
+    # Today is pinned to Mon Nov 16 (tests/conftest.py); a count of Sun Nov 22 can't be real yet.
+    upload = _start(api, "bluetide")
+    _put(api, upload, "inventory_on_hand", _inventory_with(b"2026-11-15", b"2026-11-22"))
+    checked = api.post(f"{V}/imports/{upload}/check").json()
+    assert checked["confirm_code"] is None
+    assert any("after today" in b for b in checked["report"]["blockers"])
 
 
 def test_an_older_stock_count_than_the_one_loaded_is_blocked(api: TestClient) -> None:

@@ -24,7 +24,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.config.business_rules import rules_for_snapshot
+from app.config.business_rules import rules_for_load
 from app.config.settings import REPO_ROOT, get_settings
 from app.db.session import make_engine
 from app.loader.accumulate import merge_sales
@@ -99,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     else:
         logger.info("dry run: sales file used alone (no database, so no stored history to merge)")
-    rules = rules_for_snapshot(snapshot_date_of(raw))  # "today" = the day after the files' stock count
+    rules = rules_for_load(snapshot_date_of(raw))  # the files' own data date: the day after their stock count
     reference = load_reference()
     result = build_dataset(raw, reference, rules)
     d = result.dataset

@@ -26,7 +26,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import api_router
-from app.config.business_rules import get_business_rules
+from app.config.business_rules import get_business_rules, server_today
 from app.config.settings import get_settings
 from app.errors import install_error_handlers
 from app.logging_setup import configure_logging, redact_database_url
@@ -49,7 +49,8 @@ def create_app() -> FastAPI:
         logger.info(
             "api starting",
             extra={
-                "as_of": rules.as_of_date.isoformat(),
+                "today": server_today().isoformat(),
+                "as_of_override": get_settings().as_of_date is not None,
                 "rules_fingerprint": rules.fingerprint(),
                 "database": redact_database_url(settings.database_url),
                 "cors_origins": settings.cors_origin_list,

@@ -11,14 +11,14 @@ engine, add it to the schema, set it here.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 
 from app.api.v1 import schemas as s
 from app.db import models as m
 from app.planning.explain import qty as explain_qty
 from app.planning.types import IncomingLine, ItemPlan, PlanResult, StuckItem, TrustStrip
 
-URGENT = ("TOO_LATE", "ORDER_THIS_WEEK", "ORDER_SOON")
+URGENT = ("OUT_OF_STOCK", "TOO_LATE", "OVERDUE", "ORDER_THIS_WEEK", "ORDER_SOON")  # most urgent first
 STATUS_RANK = {status: rank for rank, status in enumerate((*URGENT, "OK", "NO_RECENT_SALES", "NOT_PLANNED"))}
 
 
@@ -56,9 +56,12 @@ def card(p: ItemPlan, as_of: date, horizon_days: int, handled: s.HandledNoteOut 
         cushion_days=p.safety_days,
         order_at_least=c.order_at_least,
         short_qty=c.gap_qty,
-        sellable=p.on_hand.sellable,
+        sellable=p.on_hand_at_count.sellable,
+        sellable_now=round(c.stock_now),  # an estimate (ADR-034): whole units, as on the item page
+        count_date=p.data_date - timedelta(days=1) if p.data_date < as_of else None,
+        days_overdue=(as_of - c.order_by_date).days if c.status == "OVERDUE" and c.order_by_date else None,
         on_hold=p.on_hand.on_hold,
-        promised_to_customers=p.committed_total,
+        promised_to_customers=p.promised_still,
         on_the_way=sum(line.qty for line in p.incoming),
         late_qty=sum(line.qty for line in p.late_incoming),
         weeks_of_cover=p.weeks_of_cover,
@@ -68,7 +71,8 @@ def card(p: ItemPlan, as_of: date, horizon_days: int, handled: s.HandledNoteOut 
         if_late_arrive_order_at_least=p.if_late_arrive.order_at_least if p.if_late_arrive else None,
         handled_note=handled,
         runway=s.RunwayOut(
-            stock_lasts_days=(c.run_out_date - as_of).days if c.run_out_date else None,
+            # 0 once it has run out (ADR-034: out of stock since the count), never negative.
+            stock_lasts_days=max(0, (c.run_out_date - as_of).days) if c.run_out_date else None,
             lead_time_days=p.lead_time_days,
             cushion_days=p.safety_days,
             horizon_days=horizon_days,
@@ -128,8 +132,10 @@ def summary_sentences(
     inside_harbor: float,
     trust: TrustStrip,
     covered_by_late: int,
+    out_of_stock: int = 0,
+    overdue: int = 0,
 ) -> list[str]:
-    """The Monday screen's opening lines (§9.2), in Dana's words."""
+    """The Monday screen's opening lines (§9.2), in Dana's words; the most urgent first (ADR-034)."""
     items = lambda n: f"{n} item{'s' if n != 1 else ''}"  # noqa: E731
     sentences = []
     first = (
@@ -137,6 +143,14 @@ def summary_sentences(
         if too_late
         else ("Nothing will run out before a new order can arrive.")
     )
+    if out_of_stock:
+        first = (
+            f"{items(out_of_stock)} {'is' if out_of_stock == 1 else 'are'} probably out of stock now. "
+            + (first if too_late else "")
+        )
+        first = first.strip()
+    if overdue:
+        first += f" {overdue} order{'s are' if overdue != 1 else ' is'} overdue."
     more = []
     if this_week:
         more.append(f"{this_week} more need an order this week")
@@ -242,7 +256,9 @@ def dashboard(
         counts[row.status] += 1
     covered = sum(1 for p in planned if p.covered_only_by_late_po)
     summary = s.SummaryOut(
+        out_of_stock=counts["OUT_OF_STOCK"],
         too_late=counts["TOO_LATE"],
+        overdue=counts["OVERDUE"],
         order_this_week=counts["ORDER_THIS_WEEK"],
         order_soon=counts["ORDER_SOON"],
         handled=len(handled),
@@ -259,11 +275,15 @@ def dashboard(
             inside_harbor,
             result.trust,
             covered,
+            counts["OUT_OF_STOCK"],
+            counts["OVERDUE"],
         ),
     )
     return s.DashboardOut(
         as_of=as_of,
         data_snapshot_date=snapshot_date,
+        data_date=snapshot_date + timedelta(days=1) if snapshot_date else None,
+        days_since_count=(as_of - snapshot_date).days if snapshot_date else None,
         last_load_at=last_load_at,  # type: ignore[arg-type]
         summary=summary,
         order_items=order,

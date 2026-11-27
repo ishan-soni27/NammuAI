@@ -12,10 +12,10 @@ How it fits
     business works*.
 
 Key decisions
-    - "Today" follows the data (ADR-032): the latest load's BlueTide stock count + 1 day, worked
-      out in business_rules.rules_for_snapshot. AS_OF_DATE is only an explicit override, for
-      tests and live demos; blank or unset = follow the data. Code must never call
-      `date.today()` for business logic (BUILD_PROMPT invariant #1).
+    - "Today" is Boston's calendar date (ADR-034, config/clock.py). AS_OF_DATE is only an
+      explicit override, for tests and a fixed demo; blank or unset = the real calendar. Code
+      must never call `date.today()` for business logic (invariant #1): the clock is read in
+      config/clock.py only.
     - Supabase hands out `postgresql://` URLs. SQLAlchemy needs `postgresql+psycopg://` to
       pick the psycopg 3 driver, so we normalize it here rather than make Ishan edit the
       string by hand (a classic "works locally, broken in production" trap).

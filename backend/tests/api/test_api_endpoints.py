@@ -38,7 +38,7 @@ def test_dashboard_answers_both_questions(api: TestClient) -> None:
     }
     statuses = [i["status"] for i in d["order_items"]]
     assert statuses == sorted(
-        statuses, key=["TOO_LATE", "ORDER_THIS_WEEK", "ORDER_SOON"].index
+        statuses, key=["OUT_OF_STOCK", "TOO_LATE", "OVERDUE", "ORDER_THIS_WEEK", "ORDER_SOON"].index
     )  # most urgent first
     assert all(i["lifecycle_status"] == "active" for i in d["order_items"] + d["fine_items"])  # G17
     stuck = {s["item_code"]: s for s in d["stuck_items"]}

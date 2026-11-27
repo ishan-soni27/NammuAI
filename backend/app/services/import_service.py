@@ -26,7 +26,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.api.v1 import schemas as s
-from app.config.business_rules import rules_for_snapshot
+from app.config.business_rules import rules_for_load, server_today
 from app.config.settings import get_settings
 from app.db import models as m
 from app.db.sql import utc_now
@@ -279,14 +279,23 @@ def _check_bluetide(db: Session, up: m.Upload) -> dict[str, Any]:
     if blockers:
         return report
     assert texts is not None
-    # "Today" for these files is the day after their stock count (ADR-032): expiry, late POs and
-    # dormant items are judged as of then, not as of the last load.
-    rules = rules_for_snapshot(snapshot_date_of(raw))
+    # The loader describes these files as of their own data date (the day after their count): expiry,
+    # stale PO dates and dormant items as the files show them. The app then judges deadlines against
+    # Boston's calendar date (ADR-034).
+    rules = rules_for_load(snapshot_date_of(raw))
     result = build_dataset(raw, load_reference_from_texts(texts), rules)
     d = result.dataset
     last = _last_run(db)
     current = (last.summary or {}).get("snapshot_date") if last else None
-    report["today"] = rules.as_of_date.isoformat()
+    today = server_today()
+    report["today"] = today.isoformat()
+    report["data_date"] = rules.as_of_date.isoformat()
+    report["count_age_days"] = (today - d.snapshot_date).days
+    if d.snapshot_date > today:
+        blockers.append(
+            f"The stock count in these files is dated {day(d.snapshot_date)}, after today ({day(today)}). "
+            "That can't be a real count: check the files (or the computer's date)."
+        )
     if current and d.snapshot_date.isoformat() < current:
         blockers.append(
             f"The stock count in these files ({day(d.snapshot_date)}) is older than the one loaded now "
@@ -404,7 +413,7 @@ def load(db: Session, upload_id: int, confirm_code: str) -> s.ImportOut:
     if blockers or not texts:
         raise AppError(409, "blocked", "Something changed since the check. Check the files again.")
     reference = load_reference_from_texts(texts)
-    rules = rules_for_snapshot(snapshot_date_of(raw))  # "today" = the day after these files' stock count
+    rules = rules_for_load(snapshot_date_of(raw))  # the files' own data date: the day after their count
     result = build_dataset(raw, reference, rules)
     engine = db.get_bind()
     db.commit()  # the load runs in its own single transaction (loader/write.py)

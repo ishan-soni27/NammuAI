@@ -10,7 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.api.v1.schemas import HealthResponse
-from app.config.business_rules import rules_for_snapshot
+from app.config.business_rules import rules_for, server_today
 from app.config.settings import Settings, get_settings
 from app.services.health_service import DatabaseHealth, check_database
 
@@ -28,12 +28,11 @@ def health(
     db_health: DatabaseHealth = Depends(get_database_health),
     settings: Settings = Depends(get_settings),
 ) -> HealthResponse:
-    """Report API and database health plus the business date (the day after the latest stock count).
+    """Report API and database health, today's business date (Boston), and how old the stock count is.
 
-    Health never opens a request session, so it still answers when the database is down; "today"
-    then falls back to the AS_OF_DATE override or the default.
+    Health never opens a request session, so it still answers when the database is down.
     """
-    rules = rules_for_snapshot(db_health.snapshot_date)
+    rules = rules_for(db_health.snapshot_date, server_today())
     healthy = db_health.db == "ok" and db_health.schema_ready
     return HealthResponse(
         status="ok" if healthy else "degraded",
@@ -41,6 +40,12 @@ def health(
         schema_ready=db_health.schema_ready,
         as_of=rules.as_of_date,
         snapshot_date=db_health.snapshot_date,
+        data_date=rules.data_date if db_health.snapshot_date else None,
+        days_since_count=(rules.as_of_date - db_health.snapshot_date).days
+        if db_health.snapshot_date
+        else None,
+        stale_after_days=rules.stale_data_days,
+        very_stale_after_days=rules.very_stale_data_days,
         last_load_at=db_health.last_load_at,
         version=(settings.git_commit[:7] or "local"),
     )

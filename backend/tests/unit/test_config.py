@@ -79,23 +79,68 @@ def test_cors_origins_are_split_and_trailing_slashes_removed() -> None:
     assert s.cors_origin_list == ["https://kestrel.vercel.app", "http://localhost:5173"]
 
 
-# ---- "Today" follows the data (ADR-032) ----------------------------------------------------------
+# ---- "Today" is Boston's calendar date (ADR-034) ---------------------------------------------------
 
 
-def test_today_is_the_day_after_the_stock_count(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.config.business_rules import rules_for_snapshot
+def test_today_is_bostons_date_not_utcs(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import UTC, datetime
 
-    monkeypatch.setenv("AS_OF_DATE", "")  # blank = follow the data
+    from app.config import clock
+
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: ANN001, ANN206
+            # 04:30 UTC on Nov 27 is still 11:30 pm on Nov 26 in Boston (EST, UTC-5).
+            return datetime(2026, 11, 27, 4, 30, tzinfo=UTC).astimezone(tz)
+
+    monkeypatch.setattr(clock, "datetime", Frozen)
+    assert clock.business_today("America/New_York") == date(2026, 11, 26)
+    assert clock.business_today("UTC") == date(2026, 11, 27)
+
+
+def test_daylight_saving_is_handled(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import UTC, datetime
+
+    from app.config import clock
+
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: ANN001, ANN206
+            # 03:30 UTC on Jul 1 is 11:30 pm on Jun 30 in Boston (EDT, UTC-4).
+            return datetime(2027, 7, 1, 3, 30, tzinfo=UTC).astimezone(tz)
+
+    monkeypatch.setattr(clock, "datetime", Frozen)
+    assert clock.business_today("America/New_York") == date(2027, 6, 30)
+
+
+def test_server_today_reads_the_clock_unless_overridden(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import business_rules as br
+
+    monkeypatch.setenv("AS_OF_DATE", "")
     clear_config_caches()
-    assert rules_for_snapshot(date(2026, 11, 15)).as_of_date == date(2026, 11, 16)
-    assert rules_for_snapshot(date(2026, 11, 22)).as_of_date == date(2026, 11, 23)
-    assert rules_for_snapshot(None).as_of_date == date(2026, 11, 16)  # no load yet: the fallback
-
-
-def test_the_env_override_wins_over_the_data(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.config.business_rules import rules_for_snapshot
-
-    monkeypatch.setenv("AS_OF_DATE", "2027-01-04")
+    monkeypatch.setattr(
+        br, "business_today", lambda tz: date(2026, 12, 7) if tz == "America/New_York" else None
+    )
+    assert br.server_today() == date(2026, 12, 7)
+    monkeypatch.setenv("AS_OF_DATE", "2026-11-16")
     clear_config_caches()
-    assert rules_for_snapshot(date(2026, 11, 15)).as_of_date == date(2027, 1, 4)
-    assert rules_for_snapshot(None).as_of_date == date(2027, 1, 4)
+    assert br.server_today() == date(2026, 11, 16)
+
+
+def test_rules_carry_today_and_the_data_date() -> None:
+    from app.config.business_rules import rules_for, rules_for_load
+
+    r = rules_for(date(2026, 11, 15), date(2026, 11, 27))
+    assert (r.as_of_date, r.data_date, r.day_zero, r.days_since_data) == (
+        date(2026, 11, 27),
+        date(2026, 11, 16),
+        date(2026, 11, 16),
+        11,
+    )
+    same = rules_for(date(2026, 11, 15), date(2026, 11, 16))
+    assert same.days_since_data == 0
+    # A count newer than "today" (a clock override older than the data) moves today up to the data.
+    assert rules_for(date(2026, 11, 22), date(2026, 11, 16)).as_of_date == date(2026, 11, 23)
+    assert rules_for(None, date(2026, 11, 27)).data_date == date(2026, 11, 27)  # no load: no gap
+    load = rules_for_load(date(2026, 11, 22))
+    assert (load.as_of_date, load.data_date) == (date(2026, 11, 23), date(2026, 11, 23))

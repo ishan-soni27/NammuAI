@@ -23,7 +23,16 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-Status = Literal["TOO_LATE", "ORDER_THIS_WEEK", "ORDER_SOON", "OK", "NO_RECENT_SALES", "NOT_PLANNED"]
+Status = Literal[
+    "OUT_OF_STOCK",
+    "TOO_LATE",
+    "OVERDUE",
+    "ORDER_THIS_WEEK",
+    "ORDER_SOON",
+    "OK",
+    "NO_RECENT_SALES",
+    "NOT_PLANNED",
+]
 
 
 class HealthResponse(BaseModel):
@@ -35,12 +44,17 @@ class HealthResponse(BaseModel):
     db: Literal["ok", "down", "not_configured"]
     schema_ready: bool = Field(description="False until database migrations have been run.")
     as_of: date = Field(
-        description="The business 'today': the day after the latest BlueTide stock count (AS_OF_DATE "
-        "overrides it), never the server clock."
+        description="Today: Boston's calendar date (AS_OF_DATE overrides it for tests and demos)."
     )
     snapshot_date: date | None = Field(
         default=None, description="The date of BlueTide's stock count in the latest load (null before one)."
     )
+    data_date: date | None = Field(
+        default=None, description="The day after that count: the earliest day a viewer can 'view as of'."
+    )
+    days_since_count: int | None = Field(default=None, description="How old the stock count is, in days.")
+    stale_after_days: int | None = Field(default=None, description="Ask for this week's upload after this.")
+    very_stale_after_days: int | None = Field(default=None, description="The reminder turns red after this.")
     last_load_at: datetime | None = Field(
         description="When BlueTide data was last loaded successfully (UTC). Null before the first load."
     )
@@ -94,9 +108,15 @@ class ItemCard(BaseModel):
     cushion_days: int
     order_at_least: float
     short_qty: float = Field(description="TOO_LATE only: demand you'd miss before stock comes back.")
-    sellable: float
+    sellable: float = Field(description="Sellable at BlueTide's latest stock count.")
+    sellable_now: float = Field(
+        description="Estimated sellable at the start of today (ADR-034): the count less expected sales and "
+        "scheduled orders since. Equal to `sellable` when the count is from last night."
+    )
+    count_date: date | None = Field(default=None, description="The date of that stock count.")
+    days_overdue: int | None = Field(default=None, description="OVERDUE only: days since the order-by date.")
     on_hold: float
-    promised_to_customers: float
+    promised_to_customers: float = Field(description="Open orders still to ship from today.")
     on_the_way: float = Field(description="Incoming with a date (counted).")
     late_qty: float = Field(description="Late POs with no date (shown, not counted).")
     weeks_of_cover: float | None
@@ -171,7 +191,9 @@ class TrustStripOut(BaseModel):
 
 
 class SummaryOut(BaseModel):
+    out_of_stock: int = 0
     too_late: int
+    overdue: int = 0
     order_this_week: int
     order_soon: int
     handled: int
@@ -188,10 +210,12 @@ class DashboardOut(BaseModel):
 
     as_of: date
     data_snapshot_date: date | None
+    data_date: date | None = Field(default=None, description="The day after that count (the plan's day 0).")
+    days_since_count: int | None = Field(default=None, description="How old the stock count is today.")
     last_load_at: datetime | None
     summary: SummaryOut
     order_items: list[ItemCard] = Field(
-        description="TOO_LATE, ORDER_THIS_WEEK, ORDER_SOON, most urgent first."
+        description="OUT_OF_STOCK, TOO_LATE, OVERDUE, ORDER_THIS_WEEK, ORDER_SOON, most urgent first."
     )
     handled_items: list[ItemCard] = Field(description="Items Dana marked as handled (never hidden, §6.10).")
     fine_items: list[ItemCard]

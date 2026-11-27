@@ -27,7 +27,9 @@ from app.services import harbor_service, planning_service
 from app.services.planning_inputs import latest_load
 
 STATUS_WORDS = {
+    "OUT_OF_STOCK": "Out of stock (estimated)",
     "TOO_LATE": "Too late",
+    "OVERDUE": "Overdue",
     "ORDER_THIS_WEEK": "Order this week",
     "ORDER_SOON": "Order soon",
     "OK": "Fine",
@@ -88,6 +90,7 @@ def order_list(db: Session, rules: BusinessRules) -> str:
         "back_in_stock",
         "short_until_then",
         "can_sell",
+        "can_sell_now_estimated",
         "on_hold",
         "promised_to_customers",
         "on_the_way",
@@ -117,6 +120,7 @@ def order_list(db: Session, rules: BusinessRules) -> str:
             c.back_in_stock_date,
             c.short_qty,
             c.sellable,
+            c.sellable_now,
             c.on_hold,
             c.promised_to_customers,
             c.on_the_way,

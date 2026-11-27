@@ -18,3 +18,6 @@ pydantic-settings==2.16.3
 psycopg[binary]==3.3.9
 # JSON log lines to stdout (logging layer 1, BUILD_PROMPT §10)
 python-json-logger==4.2.0
+# The IANA timezone database for zoneinfo ("today" is read in America/New_York, ADR-034); some Linux
+# images, Vercel's included, may not ship /usr/share/zoneinfo.
+tzdata==2026.6
