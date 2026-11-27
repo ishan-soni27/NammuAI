@@ -1641,3 +1641,54 @@ Plan approved. This is step 1 (build, deploy, STOP); step 2 (docs) waits for "go
 - **Question for Ishan:** a handled note whose arrival date has passed still counts as arriving today (the older
   §6.10 rule). With a real calendar this happens between uploads. The conservative choice, matching answer 2, is to
   stop counting it until an upload shows it.
+
+## #40 | 2026-11-27 06:20 UTC (logged) | "go, and yes stop counting passed handled notes. I have a few questions, if I upload something will it change the predictions for the future?"
+**Prompt (simplified):** Go on step 2 (docs). Yes, stop counting handled notes whose date has passed. Does an upload
+change the predictions?
+**What changed:**
+- **Handled notes whose date has passed** (commit 05109dd, A25 rewritten):
+  - **not counted** once their date is before today (they used to count as arriving today);
+  - the note stays on the card and the item page, marked "Its date has passed …" (yellow);
+  - the item **leaves the grey Handled group** for its real status. That part is my call (conservative): otherwise a
+    possibly out-of-stock item would sit in grey;
+  - API: `HandledNoteOut.date_passed`, and `counts_as_incoming` is false once the date passes;
+  - tests: engine (before vs after its date) and API (a note written while viewing Nov 16 for Nov 20: Handled on Nov 16,
+    back in Too late on Nov 27, not in On the way).
+- **Item page:** on a day after the count, customer orders due before today are greyed and labelled "shipped by now
+  (estimated)". This matches the Why table, which counts only orders still to ship. I found the mismatch while checking
+  the screenshots.
+- **`scripts/compare_answer_key.py`** crashed on the new statuses (KeyError 'OVERDUE'). Fixed. It now shows LOB-MEAT as
+  overdue where the key says "this week".
+- **Docs (step 2):**
+  - **ADR-034** "Today is Boston's calendar date"; ADR-032's boundary 4 is marked superseded, and the index updated.
+  - **ASSUMPTIONS:** A18 (late = due on or before the data date), A25 (rewritten), A49 (superseded), and new **A52–A59**
+    (today, the estimate, unconfirmed supply, the red statuses, the stale levels, view as of, the late-PO instruction
+    once out of stock, a count dated after today).
+  - **CLAUDE.md:** boundary 4 and invariant 1 rewritten; the playbook gains "View as of", the stale thresholds, the
+    time zone and the estimate; the decisions list gains the real calendar.
+  - **README:** the "today" note, the weekly loop with a "Between uploads" list, statuses, assumptions, the
+    answer-key notes, and the four screenshots retaken on live as of Nov 16.
+  - **DEMO_SCRIPT:** set View as of to Nov 16 before starting; the new tiles (3 / 1 / 5 / 5 / 16, with LOB-MEAT's
+    overdue explained); a new "Any day: back to today" minute (Nov 27's numbers as the example); the new upload-check
+    wording; and what to do if the view is out of range.
+  - All the demo numbers were re-read from live in the Nov 16 view.
+**Impact:**
+- 329 tests pass, ruff is clean, and the website builds, lints and is formatted.
+- Live after deploy: see below.
+- Nov 16 view: no change (no handled notes exist).
+**Decisions made (and by whom):**
+- Ishan: stop counting passed handled notes.
+- Claude:
+  - such an item goes back to its status group;
+  - the README screenshots use the Nov 16 view, so they match the text and don't go stale daily;
+  - the "shipped by now" label.
+**AI mistakes caught or corrected:**
+- `compare_answer_key.py` wasn't updated in step 1 and crashed on 'OVERDUE'. I found it while writing the README's
+  answer-key notes.
+- The first ADR-034 draft said "the cache is keyed by (count, today)". In fact only the rules are cached; the plan is
+  computed on every request. Corrected after checking `planning_inputs.py`.
+- Step 1 left the Promised table out of step with the Why table on days after the count. Fixed above.
+**Answer to Ishan's question (does an upload change the predictions?):** yes, every number is recomputed from the new
+files. See the report for details.
+**Follow-ups:** none required. Note that once newer files are uploaded, Nov 16 can no longer be viewed: the view starts
+the day after the latest count.
