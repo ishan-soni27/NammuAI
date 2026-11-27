@@ -16,23 +16,26 @@ times, a PO's real arrival date, "I've handled this one", and how many cases fit
 
 **Live:** https://nammu-ai.vercel.app (API docs at https://nammu-ai.vercel.app/api/v1/docs)
 
-> "Today" follows the data: it's the day after the latest BlueTide stock count that was loaded. The current files
-> are Sunday Nov 15's count, so today is **Monday, Nov 16, 2026**. Next week's upload moves it to Nov 23. The
-> computer's clock is never used.
+> **"Today" is Boston's calendar date**, so the app is right on any day Dana opens it (ADR-034). The numbers start
+> from the latest BlueTide stock count (the current files are Sunday Nov 15's). Between that count and today, stock
+> is estimated and shown next to the count. Anything that has run out by the estimate, or whose order date has passed,
+> turns red. To see the assignment's day, pick **Mon Nov 16, 2026** in **View as of** in the header; the screenshots
+> and numbers below are from that view.
 
 ---
 
 ## What I built: the weekly loop
 1. **Upload (Data page).** Dana drops in BlueTide's seven exports; any she leaves out reuse last week's copy. A check
    runs first and changes nothing. It shows:
-   - what "today" will become;
+   - the count's date, and the day the numbers will start from;
    - how the sales file merged with the history (new, changed, kept);
    - anything that looks wrong (an older stock count is blocked; the same night twice is a warning).
 
    Then she presses Load. Sales history builds up across uploads, so an export of recent weeks never loses the year
    the season pattern needs.
 2. **Look (Monday).** The two answers, most urgent first:
-   - What to order is grouped as Too late / Order this week / Order soon, then Handled, Late or unknown, and Fine;
+   - What to order is grouped as Out of stock / Too late / Overdue / Order this week / Order soon, then Handled, Late
+     or unknown, and Fine;
    - the stuck list is grouped by problem, with dollars at cost.
 
    Click any item for the **why, as numbers**, one row per number the engine used, each linking to the table that
@@ -50,15 +53,24 @@ times, a PO's real arrival date, "I've handled this one", and how many cases fit
 4. **Order.** She orders the way she does today, by phone and in BlueTide. Next Monday's upload brings the PO in, and
    her handled note offers to clear itself.
 
+**Between uploads** the app keeps counting the days:
+- the header says how old the count is ("BlueTide count of Sun Nov 15 (12 days ago)");
+- a yellow banner asks for this week's files once the count is more than a week old, and turns red after two weeks;
+- each card shows the count next to the estimate for today;
+- an item that has run out by the estimate reads **Out of stock since about …**, and a missed order date reads
+  **Overdue by N days**;
+- a PO due since the last upload, or a date Dana set that has passed, isn't counted until an upload shows it.
+
 | SHR-1620: why it's too late, as numbers | On the way: BlueTide's open POs, late ones first |
 |---|---|
 | ![Item page for SHR-1620: the numbers-only why, the 26-week chart, every lot](docs/images/item-shr-1620.png) | ![On the way: open PO lines with our date, BlueTide's date, and Set real date](docs/images/on-the-way.png) |
 
 ### Use it in one minute
-1. Open the link and type your name. It goes on every change you make (there are no logins in v1, ADR-011).
-2. Read the top line: *"3 items will run out before a new order can arrive. 6 more need an order this week and 5
-   should be ordered soon."* The colours:
-   - **red** = too late;
+1. Open the link and type your name. It goes on every change you make (there are no logins in v1, ADR-011). In the
+   header, set **View as of** to **Nov 16, 2026** so the numbers below match (today's will differ).
+2. Read the top line: *"3 items will run out before a new order can arrive. 1 order is overdue. 5 more need an order
+   this week and 5 should be ordered soon."* The colours:
+   - **red** = out of stock, too late, or overdue;
    - **yellow** = order this week (solid) or soon (light);
    - **green** = fine;
    - **grey** = handled.
@@ -110,7 +122,7 @@ flowchart TD
   RU --> LOG
   KN --> API
   API["FastAPI /api/v1"] -->|"each change + its audit row,<br/>one transaction"| APP
-  BTT --> PI["planning inputs<br/>today = the stock count + 1 day"]
+  BTT --> PI["planning inputs<br/>numbers start the day after the count;<br/>today = Boston's date"]
   APP --> PI
   PI --> EN["pure planning engine<br/>selling rate x season, supply, run-out,<br/>order-by, stuck list, Harbor cost,<br/>the numbers-only why"]
   EN --> API
@@ -123,7 +135,7 @@ flowchart TD
   merges the sales file with the stored history, then applies one rule per known data problem.
   - Every row it corrects or leaves out is written down with its file, line and reason, as a data note.
   - A load is one transaction (all or nothing) and never touches Dana's knowledge.
-  - "Today" for a load is the day after its own stock count.
+  - A load describes its files as of the day after their own stock count (expiry, late POs, stopped selling).
 - **Planning.** The planning engine (`backend/app/planning/`) is pure: no database, no clock, no I/O, and no AI. So
   every rule has a unit test, and the same inputs always give the same answer. For each item:
   - **Sellable stock:** the latest count, in a sellable building, not expired, not on hold or damaged.
@@ -131,10 +143,15 @@ flowchart TD
     in December, groundfish 2.0× in March for Lent). Real demand means no transfers, samples, credits, cancellations,
     or the one-off cruise order.
   - **Supply:** promised orders are taken out on their ship dates. POs count on a re-derived arrival date: never
-    earlier than order date + the real lead time. Late POs count as nothing until Dana types a date.
+    earlier than order date + the real lead time. Late POs count as nothing until Dana types a date. Neither do POs
+    due since the last upload, nor dates (hers or a handled note's) that have passed.
+  - **Between the count and today** (ADR-034): the count − expected sales − scheduled orders, with sales lost while
+    out of stock written off. It's shown next to the count, never instead of it.
   - **The day it runs out,** compared with when an order placed today would land (lead time, plus a cushion).
-- **Statuses:**
+- **Statuses** (judged against today, Boston's date):
+  - **Out of stock:** it has run out by today (by the estimate since the count).
   - **Too late:** it runs out before a new order can land.
+  - **Overdue:** the order-by date has passed, but an order placed today still lands in time.
   - **Order this week:** the order-by date is within 7 days.
   - **Order soon:** within 21 days.
   - **"Order at least":** enough to cover from the order's arrival until next Monday's order could arrive, plus the
@@ -181,7 +198,7 @@ The code is preserved on the git tag `archive/system-of-record`.
 
 **What came out of it:**
 - the weekly loop above;
-- "today" following the data;
+- "today" following the data (since replaced by Boston's calendar date, ADR-034);
 - sales history that accumulates;
 - storage that stays bounded;
 - a read-only On the way page.
@@ -205,7 +222,7 @@ one system at any moment** (never both):
 
 ## Key assumptions
 Every default, where it came from, and whether Dana confirmed it: [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md)
-(A01–A51; A27–A45 retired with the cut). The ones that move the numbers most:
+(A01–A59; A27–A45 retired with the cut). The ones that move the numbers most:
 - **Lead times are the upper end of Dana's ranges:** Vietnam 12 weeks (BlueTide says 8), Chile 6, Canada 2, Alaska 4,
   Maine 3, plus a cushion of 2 weeks for imports and 1 week otherwise. Dana confirmed these by email.
 - **A late PO is not counted as coming** until Dana types a real date. Items only a late PO would cover get one
@@ -214,7 +231,8 @@ Every default, where it came from, and whether Dana confirmed it: [`docs/ASSUMPT
 - **Age comes from the expiry date only.** Received dates aren't age: the Chilean salmon was packed a year before it
   arrived (T30).
 - **Open customer orders count once,** taken out on their ship date and not added to the selling rate (Ishan, A23).
-- **"Today" = the day after the latest stock count (A49).** **Sales history accumulates by order + line (A50).**
+- **Today is Boston's calendar date; stock since the count is estimated and shown next to it (A52–A53).** POs due
+  since the upload, and passed dates, aren't counted (A54, A25). **Sales history accumulates by order + line (A50).**
   **Raw rows are kept for the newest 8 loads (A51).**
 - **Harbor:** $30 per pallet per month (Dana). Each lot sits on its own pallets and a part pallet is charged whole
   (A47).
@@ -226,6 +244,8 @@ Every default, where it came from, and whether Dana confirmed it: [`docs/ASSUMPT
 - The other run-out dates move because of two decisions: counting open orders once, and not counting late POs.
 - With open orders counted the spec's way, every run-out date is within 0–4 days of the key, though two items then
   tip from "this week" to "too late" by a day.
+- **LOB-MEAT:** the key says "this week"; the app says **Overdue**, because its order-by date (Nov 13) had already
+  passed on Nov 16 (ADR-034).
 - The order list also has CAL-RING (only a late PO covers it) and SHR-1215 (order-by Nov 20, just inside this week).
 
 The script prints the scenarios side by side. The logic was never tuned to the key.
@@ -305,7 +325,7 @@ From [`docs/PRIORITIES.md`](docs/PRIORITIES.md) (P1, in order):
 - A smoke test on the live site after every deploy.
 - [`CLAUDE.md`](CLAUDE.md) carries the six boundaries and the rules Claude follows each session:
   - BlueTide owns every fact;
-  - "today" follows the data;
+  - "today" is Boston's calendar date;
   - never touch the raw files;
   - business numbers live in one file;
   - pick the conservative option and record it;

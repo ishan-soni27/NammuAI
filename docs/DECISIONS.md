@@ -7,7 +7,8 @@ Ishan owns every decision; "Claude proposed, Ishan approved" means the idea came
 > Ishan's planning chat (`BUILD_PROMPT.md` §4.2, §13.3) and filled in as the code that implements them landed. Where a
 > later decision overrode the spec (hosting, late POs, open orders), the ADR says so. **ADR-032 (Ishan's scope review)
 > cut the record-keeping of ADR-026 to ADR-028 and narrowed ADR-029**: BlueTide stays the record, and the app is the
-> weekly planning layer. Those ADRs are kept, marked, so the history reads end to end.
+> weekly planning layer. Those ADRs are kept, marked, so the history reads end to end. **ADR-034 (2026-11-27) replaced
+> ADR-032's boundary 4**: "today" is Boston's calendar date, not the day after the latest count.
 
 ## Index
 
@@ -46,6 +47,7 @@ Ishan owns every decision; "Claude proposed, Ishan approved" means the idea came
 | 031 | Harbor cost | Her cases per pallet, pallets per lot, $30 per pallet per month, a saved table |
 | 032 | Scope | **BlueTide stays the record; the app is the weekly planning layer** (cut the record-keeping) |
 | 033 | The "why" | Numbers only, linked to source tables; one instruction for late-PO items; the chart writes off lost sales |
+| 034 | Real calendar | **Today is Boston's date**; the numbers start at the count and are estimated up to today; red Out of stock and Overdue; "view as of" |
 
 ---
 
@@ -1002,7 +1004,8 @@ appears (a rate per location), or someone can supply real pallet counts.
   2. The app stores only Dana's knowledge (vendor settings, item settings including cases per pallet, PO dates,
      handled notes, the Harbor table) and the logs (uploads, load runs, data notes, audit, events, requests).
   3. Each upload refreshes BlueTide's data; sales lines accumulate (A50).
-  4. "Today" follows the data: the latest load's stock count + 1 day; `AS_OF_DATE` only overrides it (A49).
+  4. ~~"Today" follows the data: the latest load's stock count + 1 day; `AS_OF_DATE` only overrides it (A49).~~
+     **Superseded by ADR-034 (2026-11-27):** today is Boston's calendar date; the count's day + 1 is the *data date*.
   5. The math is deterministic, with no LLM anywhere; every number traces back to an uploaded row.
   6. No order entry, receiving, shipping, stock moves, or adding customers, items or suppliers in the app.
 - **The cut, archived on tag `archive/system-of-record` (0796817):**
@@ -1076,3 +1079,81 @@ appears (a rate per location), or someone can supply real pallet counts.
 - The can-sell note uses building codes (NB, PVD, HCS), because the pure engine has no names.
 
 **Revisit when.** Dana asks for words back, or the chat assistant (P2) explains from these rows.
+
+## ADR-034 Today is Boston's calendar date; the numbers start at the count and are estimated up to today
+**Date:** 2026-11-27 · **Decided by:** Ishan (the real calendar, Boston time, and four answers in plan mode; prompt log
+#39–#40); details by Claude. **Supersedes** ADR-032's boundary 4 and A49.
+
+**Context.**
+- **"Today" used to follow the data** (ADR-032 boundary 4): the day after the latest BlueTide stock count. Between
+  uploads the app froze. If Dana skipped three weeks, an item that said "order by Nov 22" still said it on Dec 7, with
+  nothing urgent about it.
+- **Ishan (2026-11-26):** "This has to be a system that Dana can check any day … use a real calendar … Boston timing. It
+  has to be dynamic. If Dana doesn't log anything for 3 weeks and something says to order by November 22nd, it should
+  say that it is overdue or out of stock with some sort of indicator that it is urgent."
+- **The catch:** BlueTide's facts are still only as fresh as the last upload. Moving "today" without saying so would
+  make stale stock look current.
+
+**Decision.**
+- **Two dates:**
+  - **Today** = Boston's calendar date (`America/New_York`, so 11:30 pm in Boston is still that day, and daylight saving
+    is handled). It's read in one place, `config/clock.py`. `AS_OF_DATE` overrides it for the whole server (tests, a
+    fixed demo), and a request can view an earlier day (below). `tzdata` ships with the API, so Vercel doesn't depend
+    on the server's zone files.
+  - **Data date** = the day after the latest count (`rules.data_date`, the projection's day 0).
+- **What each is used for:**
+  - *Measured to the data date* (what the upload knows): the selling-rate window, the season pattern, stopped selling,
+    and "late" POs (A18: due on or before the data date and not received).
+  - *Judged against today*: statuses, order-by, "order at least", when a new order lands (today + lead time), expiry and
+    the six-month line, stuck tags, the validation of Dana's dates, and the day her edits are written on.
+- **The estimate between them** (Ishan's answer 1: show both):
+  - the count − expected sales − customer orders scheduled to ship + confirmed arrivals, with sales lost while out of
+    stock written off;
+  - cards and the item page show "At the count (Sun Nov 15)" next to "Can sell now (estimated)", in whole units, with
+    the bridge rows (expired since, sold and shipped since);
+  - the chart starts at today.
+- **Supply nobody can confirm yet** (Ishan's answer 2: don't count it):
+  - a PO due between the data date and today: "Due since your last upload", not counted;
+  - a PO date Dana set that has passed: "Your date has passed", not counted;
+  - a handled note whose date has passed (Ishan 2026-11-27, A25): not counted, and the item leaves the grey Handled
+    group for its real status. The note stays on the card, marked.
+- **Two new red statuses** (Ishan's answer 3), ranked Out of stock > Too late > Overdue > Order this week > Order soon:
+  - **Out of stock:** the estimate (or the count) is gone by today. The card says "Out of stock since about Tue Nov 24";
+  - **Overdue:** the order-by date has passed, but an order placed today still lands before the run-out ("Overdue by N
+    days").
+  - Monday gets a group and a tile for each when there are some, and the headline leads with them.
+- **Freshness:** the header shows the count's age ("12 days ago"). There's a yellow banner after `stale_data_days` (7)
+  and a red one after `very_stale_data_days` (14), each with a link to upload this week's files.
+- **View as of** (Ishan's answer 4):
+  - a header date control from the data date to today, kept for one browser tab (sessionStorage);
+  - it sends `X-As-Of` on every call; downloads add `?as_of=`;
+  - a yellow "Viewing as of … · Back to today" strip;
+  - edits are judged against, and dated by, the viewed day;
+  - a date outside the range gets a plain-English 422.
+  - This is how the assignment's Monday, Nov 16, stays reviewable.
+- **Uploads:** a load describes its files as of their own data date (`rules_for_load`). The check blocks a count dated
+  after today, and says where the numbers will start ("Loaded, the numbers start from Mon Nov 23").
+
+**Alternatives.**
+- (a) **Keep "today" = the data** (ADR-032): rejected. It's what Ishan asked to change, and it hides urgency between
+  uploads.
+- (b) **Move today and keep the counted stock as if it were current:** rejected. It overstates stock: SHR-2125 would
+  still look like 90 cases on Nov 27, when by the estimate it ran out on Nov 24.
+- (c) **The browser's clock:** rejected. Each viewer could see a different day, and boundary 5 wants every number
+  computed on the server.
+- (d) **UTC:** rejected. Evenings in Boston would already show tomorrow.
+- (e) **Count POs due since the upload:** rejected by Ishan (answer 2). We can't know they arrived.
+
+**Tradeoffs.**
+- Between uploads the numbers are estimates, and the longer the gap, the further off they can be. That's why there are
+  two banner levels, and the count and the estimate sit side by side.
+- **"Overdue" applies with no gap too:** on Nov 16, LOB-MEAT (order by Nov 13) moved from "Order this week" to
+  Overdue. Monday as of Nov 16 is 3 too late, 1 overdue, 5 this week, 5 soon, 16 fine (it was 3 / 6 / 5 / 16).
+- After an upload, earlier days can't be viewed: the window starts at the new data date.
+- Nothing new is cached: the plan is still computed on every request (ADR-004), and only the rules are cached,
+  per (count, today).
+
+**Revisit when.**
+- Dana uploads more or less often than weekly: tune `stale_data_days` and `very_stale_data_days`.
+- BlueTide gets a live feed, or a daily export: the gap shrinks to a day and the estimate barely matters.
+- Kestrel Bay works in another time zone: change `business_timezone`.
