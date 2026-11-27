@@ -133,7 +133,9 @@ def test_T22_open_orders_deducted_on_ship_date() -> None:
 @pytest.mark.parametrize(
     ("stock", "expected"),
     [
+        (0, "OUT_OF_STOCK"),  # nothing to sell today (ADR-034)
         (10, "TOO_LATE"),  # runs out day 10, before a 14-day order lands
+        (20, "OVERDUE"),  # order-by = 20 - 14 - 7 = day -1: passed, but an order today still lands by day 14
         (25, "ORDER_THIS_WEEK"),  # runs out day 25: order-by = 25 - 14 - 7 = day 4
         (38, "ORDER_SOON"),  # order-by day 17
         (90, "OK"),
@@ -176,7 +178,8 @@ def test_weeks_of_cover() -> None:
 def test_item_only_covered_by_a_late_po_is_called_out() -> None:
     late = po(qty=500, ordered=D(-100), bluetide=D(-40), po_no="PO-LATE")
     p = one(run(lots=[lot(qty=20)], pos=[late]))
-    assert p.confirmed.status == "ORDER_THIS_WEEK"  # late stock is NOT counted
+    # Late stock is NOT counted: 20 cases run out on day 20, so the order-by date (day -1) has passed.
+    assert p.confirmed.status == "OVERDUE"
     assert [line.reference for line in p.late_incoming] == ["PO-LATE line 1"] and p.incoming == ()
     assert p.if_late_arrive is not None and p.if_late_arrive.status == "OK"
     assert p.covered_only_by_late_po

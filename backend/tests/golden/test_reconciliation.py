@@ -11,10 +11,14 @@ For several items and dates X, the item page's stock line must equal what Dana c
 
 The parts come from the plan's own fields (on_hand, committed_lines, incoming, demand), so this proves
 nothing is counted twice or left out between the numbers on screen and the chart.
+
+With a gap between the count and today (ADR-034), the same sum runs from the data date: the chart's
+first point is today, and "can sell now (estimated)" is the sum at the end of yesterday.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -29,32 +33,49 @@ from app.planning.types import ItemPlan, PlanResult
 from app.services.planning_inputs import inputs_from_dataset
 
 RULES = BusinessRules()  # AS_OF 2026-11-16
+# Eleven days with no upload: the count of Sun Nov 15, viewed on Fri Nov 27 (ADR-034).
+LATER = replace(RULES, as_of_date=RULES.as_of_date + timedelta(days=11), data_date=RULES.as_of_date)
 ITEMS = ["SHR-1620", "LOB-T56", "SAL-POR6", "CRAB-SNW5", "SHR-2125"]
 DAYS = [0, 7, 30, 60, 120]
 
 
+def _plan(rules: BusinessRules) -> PlanResult:
+    loaded = build_dataset(read_all_raw(), load_reference(), RULES)  # the load itself is Nov 16's
+    return plan(inputs_from_dataset(loaded.dataset, load_reference().vendor_settings), rules)
+
+
 @pytest.fixture(scope="module")
 def result() -> PlanResult:
-    loaded = build_dataset(read_all_raw(), load_reference(), RULES)
-    return plan(inputs_from_dataset(loaded.dataset, load_reference().vendor_settings), RULES)
+    return _plan(RULES)
 
 
-def _parts(p: ItemPlan, x: int) -> tuple[float, float, float, float, float]:
-    """(can sell, promised shipping by X, arrivals by X, forecast through X, lost through X)."""
-    as_of = RULES.as_of_date
-    forecast = daily_forecast(p.demand, as_of, RULES.projection_horizon_days)
-    promised = sum(c.qty for c in p.committed_lines if max(0, ((c.ship_date or as_of) - as_of).days) <= x)
-    arrivals = sum(line.qty for line in p.incoming if line.eta and max(0, (line.eta - as_of).days) <= x)
-    # Lost sales: before a new order could land, a day's demand that the shelf can't meet is lost.
+@pytest.fixture(scope="module")
+def later() -> PlanResult:
+    return _plan(LATER)
+
+
+def _parts(p: ItemPlan, x: int, rules: BusinessRules = RULES) -> tuple[float, float, float, float, float]:
+    """(can sell, promised shipping by X, arrivals by X, forecast through X, lost through X), X days after
+    TODAY, summed from the data date (day 0; today is day `gap`)."""
+    day0, gap = rules.day_zero, rules.days_since_data
+    last = gap + x
+    forecast = daily_forecast(p.demand, day0, rules.projection_horizon_days + gap)
+
+    def day(d: object) -> int:
+        return max(0, ((d or day0) - day0).days)  # type: ignore[operator]
+
+    promised = sum(c.qty for c in p.committed_lines if day(c.ship_date) <= last)
+    arrivals = sum(line.qty for line in p.incoming if line.eta and day(line.eta) <= last)
+    # Lost sales: before an order placed today could land, a day's demand the shelf can't meet is lost.
     shelf, lost = p.on_hand.sellable, 0.0
-    for d in range(x + 1):
-        shelf += sum(line.qty for line in p.incoming if line.eta and max(0, (line.eta - as_of).days) == d)
-        shelf -= sum(c.qty for c in p.committed_lines if max(0, ((c.ship_date or as_of) - as_of).days) == d)
+    for d in range(last + 1):
+        shelf += sum(line.qty for line in p.incoming if line.eta and day(line.eta) == d)
+        shelf -= sum(c.qty for c in p.committed_lines if day(c.ship_date) == d)
         shelf -= forecast[d]
-        if d < p.lead_time_days and shelf < 0:
+        if d < gap + p.lead_time_days and shelf < 0:
             lost += -shelf
             shelf = 0.0
-    return p.on_hand.sellable, promised, arrivals, sum(forecast[: x + 1]), lost
+    return p.on_hand.sellable, promised, arrivals, sum(forecast[: last + 1]), lost
 
 
 @pytest.mark.parametrize("code", ITEMS)
@@ -87,3 +108,32 @@ def test_shr_1620_on_the_chart_lands_at_about_590_when_its_po_arrives(result: Pl
     jan25 = (p.incoming[0].eta - RULES.as_of_date).days
     assert p.confirmed.points[jan25 - 1].stock == pytest.approx(0, abs=0.01)
     assert 580 < p.confirmed.points[jan25].stock < 600
+
+
+@pytest.mark.parametrize("code", ITEMS)
+@pytest.mark.parametrize("x", DAYS)
+def test_eleven_days_after_the_count_the_chart_still_adds_up(later: PlanResult, code: str, x: int) -> None:
+    p = next(i for i in later.items if i.item.item_code == code)
+    can_sell, promised, arrivals, forecast, lost = _parts(p, x, LATER)
+    chart = p.confirmed.points[x]
+    assert chart.day == LATER.as_of_date + timedelta(days=x)  # the chart starts today
+    assert can_sell - promised + arrivals - forecast + lost == pytest.approx(chart.stock, abs=0.01)
+
+
+@pytest.mark.parametrize("code", ITEMS)
+def test_can_sell_now_is_the_same_sum_at_the_end_of_yesterday(later: PlanResult, code: str) -> None:
+    p = next(i for i in later.items if i.item.item_code == code)
+    can_sell, promised, arrivals, forecast, lost = _parts(p, -1, LATER)
+    assert p.confirmed.stock_now == pytest.approx(can_sell - promised + arrivals - forecast + lost, abs=0.01)
+    # And the item page's bridge says the same: the count, minus what sold and shipped since, is "now".
+    rows = {r.key: r for r in p.breakdown}
+    assert rows["at_count"].qty == pytest.approx(p.on_hand_at_count.sellable)
+    expired = rows["expired_since"].qty if "expired_since" in rows else 0
+    sold = rows["sold_since"].qty if "sold_since" in rows else 0
+    assert rows["can_sell_now"].qty == pytest.approx(
+        p.on_hand_at_count.sellable
+        - expired
+        - sold
+        + sum(line.qty for line in p.incoming if line.eta and line.eta < LATER.as_of_date),
+        abs=0.01,
+    )

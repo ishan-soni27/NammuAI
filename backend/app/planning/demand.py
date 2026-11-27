@@ -29,7 +29,8 @@ def demand_profile(
     rules: BusinessRules,
 ) -> DemandProfile:
     """Measure the current rate and turn it into a normal-season level for one item."""
-    base_days = [d for d in window_days(rules.as_of_date, rules.base_window_days) if d not in out_days]
+    # Sales are known up to the latest stock count, so the windows end at the data date (ADR-034).
+    base_days = [d for d in window_days(rules.day_zero, rules.base_window_days) if d not in out_days]
     base_qty = sum(demand.get(d, 0.0) for d in base_days)
     base_rate = base_qty / len(base_days) if base_days else 0.0
     base_index = (
@@ -38,7 +39,7 @@ def demand_profile(
     level = base_rate / base_index if base_index > 0 else base_rate
 
     history: dict[str, float] = {}
-    for day in window_days(rules.as_of_date, rules.seasonal_window_days):
+    for day in window_days(rules.day_zero, rules.seasonal_window_days):
         key = f"{day:%Y-%m}"
         history[key] = history.get(key, 0.0) + demand.get(day, 0.0)
 

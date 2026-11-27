@@ -76,13 +76,23 @@ def first_negative_day(stock: list[float]) -> int | None:
 def classify(
     run_out: date | None, lead_time_days: int, safety_days: int, rules: BusinessRules
 ) -> tuple[Status, date | None]:
-    """(status, order-by date) from the run-out date. See the table in the module docstring."""
+    """(status, order-by date) from the run-out date, judged against TODAY (ADR-034).
+
+    OUT_OF_STOCK  run-out on or before today (the estimate since the count says it's gone)
+    TOO_LATE      run-out before an order placed today could land
+    OVERDUE       the order-by date has passed, but an order today still lands before the run-out
+    then ORDER_THIS_WEEK / ORDER_SOON / OK as in the module docstring.
+    """
     as_of = rules.as_of_date
     if run_out is None:
         return "OK", None
     order_by = run_out - timedelta(days=lead_time_days + safety_days)
+    if run_out <= as_of:
+        return "OUT_OF_STOCK", order_by
     if run_out < as_of + timedelta(days=lead_time_days):
         return "TOO_LATE", order_by
+    if order_by < as_of:
+        return "OVERDUE", order_by
     if order_by <= as_of + timedelta(days=rules.order_this_week_days):
         return "ORDER_THIS_WEEK", order_by
     if order_by <= as_of + timedelta(days=rules.order_soon_days):
@@ -99,30 +109,41 @@ def build_scenario(
     safety_days: int,
     cycle_days: int,
     rules: BusinessRules,
+    gap_days: int = 0,
 ) -> Scenario:
-    """One complete projection: run-out, status, order-at-least and the shortfall."""
-    as_of = rules.as_of_date
+    """One complete projection: run-out, status, order-at-least and the shortfall (ADR-034).
+
+    Day 0 is the DATA date (the day after the stock count); today is `gap_days` later. Arrival and
+    shipment days are counted from day 0. A new order placed today lands on day gap + L.
+    """
+    day0 = rules.day_zero
     plain = simulate(start_stock, arrivals, shipments, forecast)
     day = first_negative_day(plain.end_of_day_stock)
-    run_out = as_of + timedelta(days=day) if day is not None else None
+    run_out = day0 + timedelta(days=day) if day is not None else None
     status, order_by = classify(run_out, lead_time_days, safety_days, rules)
 
-    floored = simulate(start_stock, arrivals, shipments, forecast, floor_before_day=lead_time_days)
-    order_qty = order_at_least(floored.end_of_day_stock, lead_time_days, cycle_days, safety_days)
-    gap = float(math.ceil(floored.lost_before_floor - EPSILON)) if status == "TOO_LATE" else 0.0
+    lands = gap_days + lead_time_days  # an order placed TODAY lands here
+    floored = simulate(start_stock, arrivals, shipments, forecast, floor_before_day=lands)
+    order_qty = order_at_least(floored.end_of_day_stock, lands, cycle_days, safety_days)
+    short = status in ("TOO_LATE", "OUT_OF_STOCK")
+    gap = float(math.ceil(floored.lost_before_floor - EPSILON)) if short else 0.0
     # Stock comes back the day after the last unmet demand: an earlier PO (e.g. SHR-1620's 600 cs on
     # Jan 25) or, at the latest, the new order. The shortage message uses this date, not always L.
     back_in_stock = None
-    if status == "TOO_LATE":
-        back_day = floored.last_lost_day + 1 if floored.last_lost_day is not None else lead_time_days
-        back_in_stock = as_of + timedelta(days=min(back_day, lead_time_days))
+    if short:
+        back_day = floored.last_lost_day + 1 if floored.last_lost_day is not None else lands
+        back_in_stock = day0 + timedelta(days=min(back_day, lands))
+    # The estimate for the start of today: lost sales are lost, so the shelf can't go below zero.
+    stock_now = floored.end_of_day_stock[gap_days - 1] if gap_days > 0 else start_stock
 
     # The chart shows the shelf: sales lost while out of stock are lost, not paid back when stock
     # lands (§6.9), so it uses the floored balance. (The plain one carried the lost sales forward and
     # showed SHR-1620 at ~218 cases when its Jan 25 PO lands instead of ~590; ADR-033.) Run-out and
     # status still come from the plain balance: the first day demand can't be met.
+    # The chart starts at today (the days between the count and today are the estimate above).
     points = tuple(
-        ProjectionPoint(as_of + timedelta(days=d), round(value, 3))
+        ProjectionPoint(day0 + timedelta(days=d), round(value, 3))
         for d, value in enumerate(floored.end_of_day_stock)
+        if d >= gap_days
     )
-    return Scenario(run_out, status, order_by, order_qty, gap, back_in_stock, points)
+    return Scenario(run_out, status, order_by, order_qty, gap, back_in_stock, points, round(stock_now, 3))

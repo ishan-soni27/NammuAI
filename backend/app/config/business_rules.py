@@ -37,6 +37,7 @@ from datetime import date, timedelta
 from functools import lru_cache
 from typing import Any
 
+from app.config.clock import business_today
 from app.config.settings import get_settings
 
 
@@ -60,12 +61,37 @@ class BusinessRules:
     # ---- Dates -------------------------------------------------------------------------
     as_of_date: date = _rule(
         date(2026, 11, 16),
-        doc="The date the tool treats as 'today' for run-out, expiry and lead times. It follows the "
-        "data: the day after the latest BlueTide stock count that was loaded. This value is only the "
-        "fallback before any load.",
-        source="Ishan 2026-11-26 (ADR-032): 'today follows the data'. Assignment README: 'Treat "
-        "Monday, November 16, 2026 as today' (the day after the Nov 15 count). AS_OF_DATE in the "
-        "environment overrides it for tests and live demos. Never the computer's clock.",
+        doc="Today: Boston's calendar date. Deadlines, statuses, expiry and the six-month line are "
+        "judged on it. (This value is only the fallback for code with no clock, such as the golden "
+        "tests: the assignment's Monday, November 16, 2026.)",
+        source="Ishan 2026-11-26 (ADR-034): 'use a real calendar … running in Boston timing … it has to "
+        "be dynamic.' AS_OF_DATE in the environment overrides it (tests); a viewer can 'view as of' "
+        "an earlier day (X-As-Of).",
+    )
+    data_date: date | None = _rule(
+        None,
+        doc="The day after the latest BlueTide stock count: the projection starts here, from the "
+        "counted stock, and what we know (the selling rate, the season pattern, late POs) is measured "
+        "to here. Between it and today the stock is estimated. None = the same as today.",
+        source="ADR-034 (Ishan's answers 2026-11-26: show both the count and an estimate; POs due "
+        "since the count aren't counted).",
+    )
+    business_timezone: str = _rule(
+        "America/New_York",
+        doc="The timezone 'today' is read in (Kestrel Bay is in New Bedford, MA).",
+        source="Ishan 2026-11-26: 'This will be running in Boston timing.'",
+    )
+    stale_data_days: int = _rule(
+        7,
+        unit="days",
+        doc="How old BlueTide's stock count can get before every page asks for this week's upload.",
+        source="Ishan's weekly loop (ADR-032): Dana uploads every Monday. ADR-034.",
+    )
+    very_stale_data_days: int = _rule(
+        14,
+        unit="days",
+        doc="How old the stock count can get before that reminder turns red (two missed uploads).",
+        source="ADR-034 (Claude's default, flagged to Ishan).",
     )
 
     # ---- Stuck with (§6.11) ------------------------------------------------------------
@@ -294,6 +320,16 @@ class BusinessRules:
     )
 
     # ---- Helpers -----------------------------------------------------------------------
+    @property
+    def day_zero(self) -> date:
+        """The projection's first day: the data date, or today when there's no gap (ADR-034)."""
+        return self.data_date or self.as_of_date
+
+    @property
+    def days_since_data(self) -> int:
+        """How many days today is past the data date (0 = the count is from last night)."""
+        return max(0, (self.as_of_date - self.day_zero).days)
+
     def describe(self) -> list[dict[str, Any]]:
         """Every rule with its current value, unit, explanation and source.
 
@@ -325,24 +361,44 @@ class BusinessRules:
 
 @lru_cache
 def get_business_rules() -> BusinessRules:
-    """The rules with no data to go on: the AS_OF_DATE override if set, else the fallback date.
+    """The rules with no clock and no data: the AS_OF_DATE override if set, else the fallback date.
 
-    The API's requests and every load use rules_for_snapshot instead, so "today" follows the data.
+    Requests use rules_for (today from the clock), loads use rules_for_load. Cached: it holds no "today"
+    that could go stale overnight (server_today reads the clock on every call).
     """
     override = get_settings().as_of_date
     return replace(BusinessRules(), as_of_date=override) if override else BusinessRules()
 
 
-@lru_cache(maxsize=16)
-def rules_for_snapshot(snapshot_date: date | None) -> BusinessRules:
-    """The rules for data whose BlueTide stock count is dated `snapshot_date` (ADR-032).
+def server_today() -> date:
+    """Today for this server: the AS_OF_DATE override (tests, a fixed demo), else Boston's calendar date."""
+    override = get_settings().as_of_date
+    return override or business_today(get_business_rules().business_timezone)
 
-    "Today" = the day after the count (the count is taken overnight; Monday plans from Sunday's
-    count). The AS_OF_DATE override wins if set; with no count at all, the fallback is used.
-    Cached per snapshot date, so in practice once per load.
-    Example: snapshot 2026-11-15 -> today 2026-11-16.
+
+def data_date_of(snapshot_date: date | None) -> date | None:
+    """The day after a stock count: the count is taken overnight, so Monday plans from Sunday's count."""
+    return snapshot_date + timedelta(days=1) if snapshot_date else None
+
+
+def rules_for_load(snapshot_date: date) -> BusinessRules:
+    """The rules a LOAD runs with: "today" is the files' own data date (the day after their count).
+
+    The loader's rules describe what the files say (an expired lot, a stale PO date, an item with no sales
+    in 60 days) as of the count, not as of whenever the upload happens. Example: count 2026-11-15 -> 11-16.
     """
-    base = get_business_rules()
-    if get_settings().as_of_date or snapshot_date is None:
-        return base
-    return replace(base, as_of_date=snapshot_date + timedelta(days=1))
+    day = data_date_of(snapshot_date)
+    assert day is not None
+    return replace(get_business_rules(), as_of_date=day, data_date=day)
+
+
+@lru_cache(maxsize=64)
+def rules_for(snapshot_date: date | None, today: date) -> BusinessRules:
+    """The rules for a request (ADR-034): `today` is the calendar day, `data_date` the day after the count.
+
+    If the latest count is somehow newer than today (a clock override older than the data), today moves up
+    to the data date: the data proves that day has come. Cached per (count, today).
+    Example: count 2026-11-15, today 2026-11-27 -> data_date 11-16, as_of_date 11-27 (an 11-day estimate).
+    """
+    data = data_date_of(snapshot_date) or today
+    return replace(get_business_rules(), as_of_date=max(today, data), data_date=data)

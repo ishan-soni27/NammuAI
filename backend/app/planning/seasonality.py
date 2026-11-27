@@ -94,7 +94,7 @@ def compute_seasonal_index(
     Example: if Shrimp sells 1,200 lb/day in December and 800 lb/day in an average month,
     index["Shrimp"][12] = 1.5.
     """
-    days = window_days(rules.as_of_date, rules.seasonal_window_days)
+    days = window_days(rules.day_zero, rules.seasonal_window_days)  # known sales end at the data date
     cat_rate: dict[str, dict[int, float]] = defaultdict(lambda: defaultdict(float))
     for item in items:
         rates = item_monthly_rates(

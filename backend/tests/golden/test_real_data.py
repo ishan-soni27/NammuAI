@@ -253,7 +253,7 @@ def test_G15_purchase_order_arrival_dates(engine_result: PlanResult) -> None:
 
 
 def test_G17_nothing_dead_or_fresh_in_the_order_list(engine_result: PlanResult) -> None:
-    urgent = {"TOO_LATE", "ORDER_THIS_WEEK", "ORDER_SOON"}
+    urgent = {"OUT_OF_STOCK", "TOO_LATE", "OVERDUE", "ORDER_THIS_WEEK", "ORDER_SOON"}
     in_list = [p for p in engine_result.items if p.confirmed.status in urgent]
     assert in_list, "the order list shouldn't be empty on the real data"
     assert all(p.lifecycle_status == "active" for p in in_list)

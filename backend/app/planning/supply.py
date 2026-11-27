@@ -144,7 +144,8 @@ def po_arrival(
       PO-260443 ordered Nov 2, BlueTide says Dec 28 -> Jan 25, 2027 ("Real lead time")
       PO-260407 ordered Aug 24, BlueTide said Oct 19 -> candidate Nov 16 = today -> LATE, no date
     """
-    as_of = rules.as_of_date
+    as_of = rules.as_of_date  # today (ADR-034)
+    day0 = rules.day_zero  # the data date: what the last upload knows
     bluetide = line.expected_date_system
     real = line.order_date + timedelta(days=lead_time_days)
     candidate = max(bluetide, real) if bluetide else real
@@ -156,6 +157,23 @@ def po_arrival(
     reference = f"{line.po_no} line {line.line_no}"
     po = {"po_no": line.po_no, "line_no": line.line_no}
 
+    if override is not None and override.eta < as_of:
+        # Dana's date has passed since she set it. Only the next upload can show it arrived: not counted
+        # (Ishan 2026-11-26: like a late PO; stockouts less likely).
+        flags.append(
+            "Your date has passed: upload this week's files to confirm it arrived, or set a new date"
+        )
+        return IncomingLine(
+            "po",
+            reference,
+            line.qty_remaining,
+            None,
+            "Your date has passed",
+            bluetide,
+            True,
+            tuple(flags),
+            **po,
+        )
     if override is not None:
         return IncomingLine(
             "po",
@@ -168,7 +186,22 @@ def po_arrival(
             tuple(flags),
             **po,
         )
-    if candidate <= as_of:  # A18: should already be here, nothing received
+    if day0 < candidate <= as_of:
+        # Due after the last count but by today: we can't know it arrived until the next upload.
+        # Not counted (Ishan 2026-11-26), flagged so Dana uploads or sets its real date (ADR-034).
+        flags.append("Due since your last upload: upload this week's files or set its real date")
+        return IncomingLine(
+            "po",
+            reference,
+            line.qty_remaining,
+            None,
+            "Due since your last upload",
+            bluetide,
+            True,
+            tuple(flags),
+            **po,
+        )
+    if candidate <= day0:  # A18: should already be here by the count, and it wasn't received
         flags.append("Late: confirm with vendor")
         if rules.late_po_assumed_days is None:  # Dana Q3: don't assume an arrival date
             return IncomingLine(

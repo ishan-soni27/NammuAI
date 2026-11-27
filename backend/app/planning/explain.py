@@ -11,7 +11,7 @@ least"), always with units. Never "SKU", "UOM", "safety stock" or "committed".
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from app.planning.types import BreakdownRow, CommittedLine, DemandProfile, IncomingLine, OnHand, Scenario
 
@@ -83,8 +83,13 @@ def late_po_instruction(sell_uom: str, order_at_least: float, late: tuple[Incomi
 def breakdown(
     *,
     as_of: date,
+    data_date: date | None = None,
     sell_uom: str,
     on_hand: OnHand,
+    on_hand_at_count: OnHand | None = None,
+    sold_and_shipped_since: float = 0.0,
+    sales_expected_since: float = 0.0,
+    orders_scheduled_since: float = 0.0,
     committed: tuple[CommittedLine, ...],
     incoming: tuple[IncomingLine, ...],
     late: tuple[IncomingLine, ...],
@@ -99,22 +104,85 @@ def breakdown(
     if_late_arrive: Scenario | None,
 ) -> tuple[BreakdownRow, ...]:
     """The rows that apply, in reading order: what you have, what's promised, what's coming, how fast
-    it sells, so when it runs out, and what to do. Each number is the one the engine used."""
+    it sells, so when it runs out, and what to do. Each number is the one the engine used.
+
+    When the count is older than today (ADR-034), the first rows bridge the two: the count as BlueTide
+    reported it, anything that expired since, the estimated sales and scheduled orders since, and the
+    estimate for today. Ishan (2026-11-26): show both the count and the estimate.
+    """
     u = sell_uom
     rows: list[BreakdownRow] = []
-    rows.append(
-        BreakdownRow(
-            "can_sell",
-            "Can sell now",
-            on_hand.sellable,
-            unit_word(u, on_hand.sellable),
-            detail=" · ".join(
-                f"{loc} {round(v):,}" for loc, v in sorted(on_hand.sellable_by_location.items()) if v
+    day0 = data_date or as_of
+    gap = (as_of - day0).days
+    at_count = on_hand_at_count or on_hand
+
+    def by_building(summary: OnHand) -> str | None:
+        parts = [f"{loc} {round(v):,}" for loc, v in sorted(summary.sellable_by_location.items()) if v]
+        return " · ".join(parts) or None
+
+    if gap <= 0:
+        rows.append(
+            BreakdownRow(
+                "can_sell",
+                "Can sell now",
+                on_hand.sellable,
+                unit_word(u, on_hand.sellable),
+                detail=by_building(on_hand),
+                link="#have",
             )
-            or None,
-            link="#have",
         )
-    )
+    else:
+        count_day = day0 - timedelta(days=1)
+        rows.append(
+            BreakdownRow(
+                "at_count",
+                f"At the count ({day(count_day)})",
+                at_count.sellable,
+                unit_word(u, at_count.sellable),
+                on=count_day,
+                detail=by_building(at_count),
+                link="#have",
+            )
+        )
+        expired_since = on_hand.expired - at_count.expired
+        if expired_since > 0.5:
+            rows.append(
+                BreakdownRow(
+                    "expired_since",
+                    "Expired since the count",
+                    expired_since,
+                    unit_word(u, expired_since),
+                    detail="no longer counted",
+                    link="#have",
+                )
+            )
+        note = (
+            f"{gap} day{'s' if gap != 1 else ''}: expected sales about {round(sales_expected_since):,}"
+            f" + scheduled orders {round(orders_scheduled_since):,}"
+        )
+        if sold_and_shipped_since + 0.5 < sales_expected_since + orders_scheduled_since:
+            note += "; it ran out, so the rest couldn't be sold"
+        rows.append(
+            BreakdownRow(
+                "sold_since",
+                "Sold and shipped since (estimated)",
+                sold_and_shipped_since,
+                unit_word(u, sold_and_shipped_since),
+                detail=note,
+                link="#chart",
+            )
+        )
+        rows.append(
+            BreakdownRow(
+                "can_sell_now",
+                "Can sell now (estimated)",
+                round(confirmed.stock_now),  # an estimate: whole units (engine.py derives "sold" from it)
+                unit_word(u, confirmed.stock_now),
+                on=as_of,
+                detail="the count, less what's expected to have gone since; upload this week's files to know",
+                link="#chart",
+            )
+        )
     not_counted = [
         (label, v)
         for label, v in (
@@ -136,6 +204,8 @@ def breakdown(
                 link="#have",
             )
         )
+    # Promised = open orders still to ship from today (those due in the gap are in "sold and shipped since").
+    committed = tuple(c for c in committed if max(0, ((c.ship_date or day0) - day0).days) >= max(gap, 0))
     if committed:
         total = sum(c.qty for c in committed)
         biggest = max(committed, key=lambda c: c.qty)
@@ -177,13 +247,25 @@ def breakdown(
         )
     for line in late:
         said = f"BlueTide said {day(line.bluetide_date)}" if line.bluetide_date else "no date in BlueTide"
+        if line.eta_source == "Due since your last upload":
+            label, note = (
+                "Due since your last upload, not counted",
+                f"{said}; upload this week's files or set its date",
+            )
+        elif line.eta_source == "Your date has passed":
+            label, note = (
+                "Your date has passed, not counted",
+                "upload this week's files to confirm it arrived",
+            )
+        else:
+            label, note = "Late, not counted", f"{said}; nothing received"
         rows.append(
             BreakdownRow(
                 "late",
-                f"Late, not counted: {line.reference}",
+                f"{label}: {line.reference}",
                 line.qty,
                 unit_word(u, line.qty),
-                detail=f"{said}; nothing received",
+                detail=note,
                 link="#late",
             )
         )
@@ -208,10 +290,11 @@ def breakdown(
             link="#demand",
         )
     )
+    gone = confirmed.run_out_date is not None and confirmed.run_out_date <= as_of
     rows.append(
         BreakdownRow(
             "runs_out",
-            "Runs out",
+            "Out of stock since (estimated)" if gone else "Runs out",
             on=confirmed.run_out_date,
             detail=relative(confirmed.run_out_date, as_of)
             if confirmed.run_out_date
@@ -228,7 +311,7 @@ def breakdown(
             link="#chart",
         )
     )
-    if confirmed.status == "TOO_LATE":
+    if confirmed.status in ("TOO_LATE", "OUT_OF_STOCK"):
         back = confirmed.back_in_stock_date or new_order_arrival
         by = "stock on the way lands" if back < new_order_arrival else "a new order lands"
         rows.append(
@@ -242,10 +325,11 @@ def breakdown(
                 link="#chart",
             )
         )
-    if confirmed.status in ("TOO_LATE", "ORDER_THIS_WEEK", "ORDER_SOON") or confirmed.order_at_least > 0:
+    urgent = ("OUT_OF_STOCK", "TOO_LATE", "OVERDUE", "ORDER_THIS_WEEK", "ORDER_SOON")
+    if confirmed.status in urgent or confirmed.order_at_least > 0:
         order_by = confirmed.order_by_date
         on = order_by if order_by and order_by >= as_of else None  # the date column: order by
-        if confirmed.order_at_least == 0 and confirmed.status == "TOO_LATE":
+        if confirmed.order_at_least == 0 and confirmed.status in ("TOO_LATE", "OUT_OF_STOCK"):
             on, note = None, f"an order today lands {day(new_order_arrival)}, after the stock on the way"
         elif confirmed.order_at_least == 0:
             note = "nothing needed today; order by this date"

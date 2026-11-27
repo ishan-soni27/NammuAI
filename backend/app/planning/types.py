@@ -157,7 +157,16 @@ class PlanningInputs:
 
 # ---- Outputs ---------------------------------------------------------------------------
 
-Status = Literal["TOO_LATE", "ORDER_THIS_WEEK", "ORDER_SOON", "OK", "NO_RECENT_SALES", "NOT_PLANNED"]
+Status = Literal[
+    "OUT_OF_STOCK",  # ADR-034: the estimate since the count says it's already gone
+    "TOO_LATE",
+    "OVERDUE",  # ADR-034: the order-by date has passed, but an order today still lands in time
+    "ORDER_THIS_WEEK",
+    "ORDER_SOON",
+    "OK",
+    "NO_RECENT_SALES",
+    "NOT_PLANNED",
+]
 StuckTag = Literal["EXPIRED", "STOPPED_SELLING", "INSIDE_SIX_MONTHS", "LONG_AT_HARBOR", "OVERSTOCK"]
 
 
@@ -236,9 +245,12 @@ class Scenario:
     status: Status
     order_by_date: date | None
     order_at_least: float
-    gap_qty: float  # TOO_LATE only: demand you'd miss before stock comes back
-    back_in_stock_date: date | None  # TOO_LATE only: when stock comes back (an earlier PO, or the new order)
-    points: tuple[ProjectionPoint, ...]
+    gap_qty: float  # out of stock / too late: demand you'd miss before stock comes back
+    back_in_stock_date: (
+        date | None
+    )  # out of stock / too late: when stock comes back (earlier PO or new order)
+    points: tuple[ProjectionPoint, ...]  # from TODAY, one per day of the horizon
+    stock_now: float = 0.0  # estimated stock at the start of today (= the count when there's no gap)
 
 
 @dataclass(frozen=True)
@@ -252,8 +264,14 @@ class ItemPlan:
     lead_time_days_system: int | None
     safety_days: int
     order_cycle_days: int
-    on_hand: OnHand
+    on_hand: OnHand  # what's good TODAY (lots expired since the count drop out); the projection starts here
+    on_hand_at_count: OnHand  # what BlueTide's count says, as of the data date (shown next to the estimate)
+    data_date: date  # the projection's day 0: the day after the count (= today when there's no gap)
+    sold_and_shipped_since: float  # estimated, between the count and today (0 when there's no gap)
+    sales_expected_since: float  # forecast demand in that gap, before any stockout
+    orders_scheduled_since: float  # open orders whose ship date fell in that gap
     committed_total: float
+    promised_still: float  # open orders not yet due to ship by today (= committed_total with no gap)
     committed_lines: tuple[CommittedLine, ...]
     incoming: tuple[IncomingLine, ...]  # with a date: counted
     late_incoming: tuple[IncomingLine, ...]  # late, no date: shown, not counted (P0 #2a)
