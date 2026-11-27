@@ -2,8 +2,10 @@
  * "Download for Excel" (Phase 6 step 4; ADR-030): a plain link to GET /exports/{list}.csv.
  * The server names the file (kestrel-bay-<list>-<date>.csv) and writes it so Excel opens it
  * cleanly: dates as 2026-11-16, numbers without units (the unit is its own column), her words.
+ * While "view as of" shows an earlier day, the link adds ?as_of= so the file matches the screen.
  */
 import { API_BASE_URL } from "../api/client";
+import { useViewDate } from "../lib/viewDate";
 
 export type ExportList =
   "order-list" | "stuck-list" | "purchase-orders" | "data-notes" | "harbor-storage";
@@ -18,9 +20,11 @@ export function DownloadLink({
   what: string;
   label?: string;
 }) {
+  const viewDate = useViewDate();
+  const query = viewDate ? `?as_of=${encodeURIComponent(viewDate)}` : "";
   return (
     <a
-      href={`${API_BASE_URL}/exports/${list}.csv`}
+      href={`${API_BASE_URL}/exports/${list}.csv${query}`}
       download
       title={`${what}, as a file Excel opens`}
       aria-label={`${label}: ${what}`}

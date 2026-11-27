@@ -3,7 +3,8 @@
  *
  * - Base URL is the same site's /api/v1 (override with VITE_API_BASE_URL if ever needed).
  * - Every request sends X-Actor (for the audit trail) and X-Request-ID (so a browser
- *   error and the matching server log line share one reference id).
+ *   error and the matching server log line share one reference id), and X-As-Of while the
+ *   header's "view as of" shows an earlier day (lib/viewDate.ts; ADR-034).
  * - Failures become an `ApiError` with a plain-English message and that reference id,
  *   which <ErrorState> shows to Dana.
  *
@@ -11,6 +12,7 @@
  * apiGet<ResponseType>("/path") or apiSend<ResponseType>("PATCH", "/path", body).
  */
 import { getActor } from "../lib/actor";
+import { getViewDate } from "../lib/viewDate";
 import type { ApiErrorBody } from "./types";
 
 // The API lives on the same site under /api (one Vercel project, two services; see the
@@ -65,6 +67,8 @@ async function request<T>(
     "X-Actor": getActor(),
     "X-Request-ID": requestId,
   };
+  const viewDate = getViewDate();
+  if (viewDate) headers["X-As-Of"] = viewDate;
   if (raw !== undefined) headers["Content-Type"] = "text/csv";
   else if (body !== undefined) headers["Content-Type"] = "application/json";
   let response: Response;

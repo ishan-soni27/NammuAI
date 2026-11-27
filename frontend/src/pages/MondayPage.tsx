@@ -3,15 +3,16 @@
  *   1. What will run out before a new order can arrive?  ("What to order")
  *   2. What is she stuck with?                            ("What you're stuck with")
  * Top: the headline sentence and the counts in traffic-light colours. What to order is split into one
- * dropdown per status (Too late, Order this week, Order soon), each holding a grid of item cards
- * (Ishan, 2026-11-26). Below the order list:
+ * dropdown per status (Out of stock, Too late, Overdue, Order this week, Order soon), each holding a
+ * grid of item cards (Ishan, 2026-11-26; the red Out of stock and Overdue are ADR-034's, shown only
+ * when there are some). Below the order list:
  * Handled, Late or unknown (late POs and on-hold stock, never counted; ADR-021) and Everything else
  * looks fine, each closed until clicked. Two columns from 1024 px; one column on phones.
  * Fed by: GET /dashboard.
  */
 import { Link } from "react-router";
 import { useDashboard } from "../api/queries";
-import type { Dashboard, Status } from "../api/types";
+import type { Dashboard, LateLine, Status } from "../api/types";
 import { Disclosure } from "../components/Disclosure";
 import { DownloadLink } from "../components/DownloadLink";
 import { OrderRow } from "../components/OrderRow";
@@ -38,10 +39,12 @@ function itemLink(code: string, description: string) {
 // the next cards fill in around it (grid-flow-dense).
 const GRID = "grid grid-flow-dense grid-cols-1 gap-3 sm:grid-cols-2";
 
-// What to order, one dropdown per status, most urgent first. Too late and Order this week start
-// open (they need action this week); Order soon starts closed.
+// What to order, one dropdown per status, most urgent first. All but Order soon start open (they
+// need action this week); Order soon starts closed.
 const ORDER_GROUPS: [Status, boolean][] = [
+  ["OUT_OF_STOCK", true],
   ["TOO_LATE", true],
+  ["OVERDUE", true],
   ["ORDER_THIS_WEEK", true],
   ["ORDER_SOON", false],
 ];
@@ -73,6 +76,17 @@ function Count({
   );
 }
 
+/** Lines not counted because their date passed after the last upload (ADR-034), in Dana's words. */
+function sinceUpload(line: LateLine): string | null {
+  const flag = line.flags.find(
+    (f) => f.startsWith("Due since your last upload") || f.startsWith("Your date has passed"),
+  );
+  if (!flag) return null;
+  return flag.startsWith("Due")
+    ? "Due since your last upload: upload this week's files to see if it arrived."
+    : "Your date has passed: upload this week's files to confirm it arrived, or set a new date.";
+}
+
 function LateOrUnknown({ data }: { data: Dashboard }) {
   const { late_pos, on_hold } = data.late_inventory;
   return (
@@ -94,8 +108,10 @@ function LateOrUnknown({ data }: { data: Dashboard }) {
                 <div>{itemLink(line.item_code, line.description)}</div>
                 <p className="mt-0.5">
                   {line.reference}, {qty(line.qty, line.sell_uom)}.
-                  {line.bluetide_date &&
-                    ` BlueTide said ${formatShortDate(line.bluetide_date)}, and nothing has arrived.`}
+                  {sinceUpload(line)
+                    ? ` ${sinceUpload(line)}`
+                    : line.bluetide_date &&
+                      ` BlueTide said ${formatShortDate(line.bluetide_date)}, and nothing has arrived.`}
                 </p>
                 {line.po_no && line.line_no !== null && (
                   <div className="mt-1">
@@ -136,8 +152,12 @@ function Monday({ data }: { data: Dashboard }) {
     <div className="space-y-5">
       <section aria-label="Summary" className="rounded-lg border border-rope bg-hull px-5 py-4">
         {headline && <p className="text-lg font-bold sm:text-xl">{headline}</p>}
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))]">
+          {s.out_of_stock > 0 && (
+            <Count tone="red" value={String(s.out_of_stock)} label="Out of stock (estimated)" />
+          )}
           <Count tone="red" value={String(s.too_late)} label="Too late" />
+          {s.overdue > 0 && <Count tone="red" value={String(s.overdue)} label="Overdue" />}
           <Count tone="yellow" value={String(s.order_this_week)} label="Order this week" />
           <Count tone="yellow" value={String(s.order_soon)} label="Order soon" />
           <Count tone="green" value={String(s.fine)} label="Fine" />

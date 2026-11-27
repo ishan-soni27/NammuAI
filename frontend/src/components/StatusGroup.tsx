@@ -1,8 +1,8 @@
 /**
- * One status in "What to order" as its own dropdown (Ishan, 2026-11-26): Too late, Order this week,
- * Order soon. The header says what the status means and how many items it holds; opening it shows
- * the grid of item cards. Too late and Order this week start open (they need action this week);
- * Order soon starts closed. Uses its own named group ("section") so the cards inside open and close
+ * One status in "What to order" as its own dropdown (Ishan, 2026-11-26): Out of stock, Too late,
+ * Overdue, Order this week, Order soon. The header says what the status means and how many items it
+ * holds; opening it shows the grid of item cards. All but Order soon start open (they need action this
+ * week); Order soon starts closed. Uses its own named group ("section") so the cards inside open and close
  * on their own (a shared "group" class made every card look open; see Term.tsx).
  * Fed by: Dashboard.order_items, grouped by status in MondayPage.
  */
@@ -11,6 +11,10 @@ import type { Status } from "../api/types";
 import { StatusChip } from "./StatusChip";
 
 const MEANING: Partial<Record<Status, string>> = {
+  OUT_OF_STOCK:
+    "By our estimate these have nothing left to sell today. Order now, and upload this week's BlueTide files to check.",
+  OVERDUE:
+    "The order-by date has passed. An order placed today still lands before these run out, with less cushion: order today.",
   TOO_LATE:
     "These run out before a new order can arrive. Order now and find a way to cover the gap.",
   ORDER_THIS_WEEK: "Place these orders this week so they arrive in time.",
@@ -18,7 +22,9 @@ const MEANING: Partial<Record<Status, string>> = {
 };
 
 const EDGE: Partial<Record<Status, string>> = {
+  OUT_OF_STOCK: "border-l-red",
   TOO_LATE: "border-l-red",
+  OVERDUE: "border-l-red",
   ORDER_THIS_WEEK: "border-l-yellow",
   ORDER_SOON: "border-l-yellow",
 };

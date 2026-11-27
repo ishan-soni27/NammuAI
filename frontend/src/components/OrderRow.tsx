@@ -4,7 +4,8 @@
  * key date, the runway bar and how much to order. Clicking it opens it across the full row with short
  * computed labels (runs out, order by, order at least, when a new order lands, the shortfall, stock
  * on hold, late POs), the one instruction for items only a late PO would cover (ADR-033), Dana's
- * handled note and the buttons. No paragraphs: the item page has the full numbers-only "why".
+ * handled note and the buttons. When BlueTide's count is older than the day shown (ADR-034), it
+ * shows both: what the count said, and the estimate for today (Ishan 2026-11-26). No paragraphs: the item page has the full numbers-only "why".
  * Native <details>, so it opens with the keyboard and screen readers for free.
  * Fed by: ItemCard from GET /dashboard.
  */
@@ -20,37 +21,71 @@ import { RunwayBar } from "./RunwayBar";
 import { StatusChip } from "./StatusChip";
 import { Term } from "./Term";
 
+/** "Overdue by 6 days". */
+function overdueBy(card: ItemCard): string {
+  const n = card.days_overdue ?? 0;
+  return `Overdue by ${n} day${n === 1 ? "" : "s"}`;
+}
+
+/** "Out of stock since about Tue Nov 24" (estimated) or, with nothing counted, "Nothing left to sell". */
+function outOfStock(card: ItemCard, asOf: string): string {
+  return card.run_out_date && card.run_out_date < asOf
+    ? `Out of stock since about ${formatShortDate(card.run_out_date)}`
+    : "Nothing left to sell today";
+}
+
 /** The one date that matters most, for the closed row. */
 function keyDate(card: ItemCard, asOf: string): string {
   if (card.status === "NO_RECENT_SALES") return "No recent sales";
+  if (card.status === "OUT_OF_STOCK") return outOfStock(card, asOf);
+  if (card.status === "OVERDUE" && card.order_by_date) {
+    return `${overdueBy(card)} (order by was ${formatShortDate(card.order_by_date)})`;
+  }
   if ((card.status === "ORDER_THIS_WEEK" || card.status === "ORDER_SOON") && card.order_by_date) {
-    // An order-by date before today means the order is already overdue: say so, don't show a past date.
-    return card.order_by_date < asOf
-      ? `Order now (was due ${formatShortDate(card.order_by_date)})`
-      : `Order by ${formatShortDate(card.order_by_date)}`;
+    return `Order by ${formatShortDate(card.order_by_date)}`;
   }
   if (card.run_out_date) return `Runs out ${formatShortDate(card.run_out_date)}`;
   return `Lasts more than ${duration(card.runway.horizon_days)}`;
 }
 
+const SHORT_STATUSES: ItemCard["status"][] = ["OUT_OF_STOCK", "TOO_LATE"];
+
 /** The opened card's facts: short computed labels, each a number or a date (ADR-033). */
 function Facts({ card, asOf }: { card: ItemCard; asOf: string }) {
   const uom = card.sell_uom;
-  const facts: [ReactNode, ReactNode][] = [
-    [
+  const facts: [ReactNode, ReactNode][] = [];
+  // Both counts when the count is older than the day shown (Ishan's choice 1, ADR-034).
+  if (card.count_date) {
+    facts.push([`At the count (${formatShortDate(card.count_date)})`, qty(card.sellable, uom)]);
+    facts.push(["Can sell now (estimated)", qty(card.sellable_now, uom)]);
+  }
+  if (card.status === "OUT_OF_STOCK") {
+    facts.push([
+      "Out of stock",
+      <span key="out" className="text-red">
+        {card.run_out_date && card.run_out_date < asOf
+          ? `since about ${dayWithRelative(card.run_out_date, asOf)}`
+          : "nothing left to sell today"}
+      </span>,
+    ]);
+  } else {
+    facts.push([
       "Runs out",
       card.run_out_date
         ? dayWithRelative(card.run_out_date, asOf)
         : `not within ${duration(card.runway.horizon_days)}`,
-    ],
-  ];
-  if ((card.status === "ORDER_THIS_WEEK" || card.status === "ORDER_SOON") && card.order_by_date) {
+    ]);
+  }
+  if (card.status === "OVERDUE" && card.order_by_date) {
     facts.push([
       "Order by",
-      card.order_by_date < asOf
-        ? `now (was due ${formatShortDate(card.order_by_date)})`
-        : dayWithRelative(card.order_by_date, asOf),
+      <span key="overdue" className="text-red">
+        {formatShortDate(card.order_by_date)}: {overdueBy(card).toLowerCase()}
+      </span>,
     ]);
+  }
+  if ((card.status === "ORDER_THIS_WEEK" || card.status === "ORDER_SOON") && card.order_by_date) {
+    facts.push(["Order by", dayWithRelative(card.order_by_date, asOf)]);
   }
   facts.push(["Order at least", qty(card.order_at_least, uom)]);
   facts.push([
@@ -59,7 +94,7 @@ function Facts({ card, asOf }: { card: ItemCard; asOf: string }) {
     </Term>,
     `${dayWithRelative(card.new_order_arrival, asOf)} · ${card.vendor_name}, ${weeks(card.lead_time_days)} + ${weeks(card.cushion_days)} cushion`,
   ]);
-  if (card.status === "TOO_LATE" && card.short_qty > 0) {
+  if (SHORT_STATUSES.includes(card.status) && card.short_qty > 0) {
     facts.push([
       "Short",
       <span key="short" className="text-red">
@@ -98,7 +133,9 @@ function Facts({ card, asOf }: { card: ItemCard; asOf: string }) {
 
 // The card's left edge in its traffic-light colour (always with the chip's words too).
 const ACCENT: Record<ItemCard["status"] | "HANDLED", string> = {
+  OUT_OF_STOCK: "border-l-red",
   TOO_LATE: "border-l-red",
+  OVERDUE: "border-l-red",
   ORDER_THIS_WEEK: "border-l-yellow",
   ORDER_SOON: "border-l-yellow",
   OK: "border-l-green",
@@ -110,7 +147,7 @@ const ACCENT: Record<ItemCard["status"] | "HANDLED", string> = {
 /** The one line about ordering on the closed card. */
 function orderShort(card: ItemCard): string {
   if (card.order_at_least > 0) return `Order at least ${qty(card.order_at_least, card.sell_uom)}`;
-  return card.status === "TOO_LATE"
+  return SHORT_STATUSES.includes(card.status)
     ? "Ordering more won't close the gap"
     : "Nothing to order today";
 }

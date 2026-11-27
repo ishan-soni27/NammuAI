@@ -264,7 +264,14 @@ function Item({ detail }: { detail: ItemDetail }) {
 
       <Card title="What you have" id="have">
         <p className="mb-2 text-fog">
-          You can sell {qty(card.sellable, uom)}.
+          {card.count_date ? (
+            <>
+              BlueTide's count of {formatShortDate(card.count_date)}: {qty(card.sellable, uom)} you
+              can sell. About {qty(card.sellable_now, uom)} today (estimated: see Why).
+            </>
+          ) : (
+            <>You can sell {qty(card.sellable, uom)}.</>
+          )}
           {card.on_hold > 0 && <> {qty(card.on_hold, uom)} on hold.</>}
           {detail.damaged > 0 && <> {qty(detail.damaged, uom)} damaged.</>}
           {detail.expired > 0 && <> {qty(detail.expired, uom)} expired.</>} Only counted lots go

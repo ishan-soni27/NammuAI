@@ -35,6 +35,17 @@ export function relative(isoDate: string, asOf: string): string {
   return `in ${Math.round(days / 7)} weeks`;
 }
 
+/** Calendar days from one business date to another (both "YYYY-MM-DD"). */
+export function daysBetween(fromIso: string, toIso: string): number {
+  return differenceInCalendarDays(parseBusinessDate(toIso), parseBusinessDate(fromIso));
+}
+
+/** How old BlueTide's count is: "yesterday", "12 days ago". */
+export function countAge(days: number): string {
+  if (days <= 0) return "today";
+  return days === 1 ? "yesterday" : `${days} days ago`;
+}
+
 /** "Mon Dec 14 (in 4 weeks)". */
 export function dayWithRelative(isoDate: string, asOf: string): string {
   return `${formatShortDate(isoDate)} (${relative(isoDate, asOf)})`;

@@ -7,7 +7,14 @@
  */
 
 export type Status =
-  "TOO_LATE" | "ORDER_THIS_WEEK" | "ORDER_SOON" | "OK" | "NO_RECENT_SALES" | "NOT_PLANNED";
+  | "OUT_OF_STOCK"
+  | "TOO_LATE"
+  | "OVERDUE"
+  | "ORDER_THIS_WEEK"
+  | "ORDER_SOON"
+  | "OK"
+  | "NO_RECENT_SALES"
+  | "NOT_PLANNED";
 
 export type StuckTag =
   "EXPIRED" | "STOPPED_SELLING" | "INSIDE_SIX_MONTHS" | "LONG_AT_HARBOR" | "OVERSTOCK";
@@ -17,10 +24,17 @@ export interface HealthResponse {
   status: "ok" | "degraded";
   db: "ok" | "down" | "not_configured";
   schema_ready: boolean;
-  /** Business "today": the day after BlueTide's latest stock count. Never the browser clock. */
+  /** Today in Boston (ADR-034), from the server, never the browser clock. Ignores the "view as of" date. */
   as_of: string;
   /** The date of BlueTide's stock count in the latest load (null before the first load). */
   snapshot_date?: string | null;
+  /** The day after that count: where the numbers start, and the earliest day you can view. */
+  data_date?: string | null;
+  /** Days from the count to today. */
+  days_since_count?: number | null;
+  /** The count is "old" after this many days (yellow banner) and "very old" after the second (red). */
+  stale_after_days?: number | null;
+  very_stale_after_days?: number | null;
   last_load_at: string | null;
   version: string;
 }
@@ -62,7 +76,14 @@ export interface ItemCard {
   cushion_days: number;
   order_at_least: number;
   short_qty: number;
+  /** What BlueTide's count said you can sell. */
   sellable: number;
+  /** The estimate for today: the count minus expected sales and scheduled orders since (ADR-034). */
+  sellable_now: number;
+  /** The count's date, when it's older than the day shown (null when the count is from last night). */
+  count_date: string | null;
+  /** Overdue: days since the order-by date. */
+  days_overdue: number | null;
   on_hold: number;
   promised_to_customers: number;
   on_the_way: number;
@@ -130,7 +151,9 @@ export interface TrustStrip {
 }
 
 export interface Summary {
+  out_of_stock: number;
   too_late: number;
+  overdue: number;
   order_this_week: number;
   order_soon: number;
   handled: number;
@@ -144,8 +167,12 @@ export interface Summary {
 
 /** GET /dashboard */
 export interface Dashboard {
+  /** The day these numbers are for: today in Boston, or the "view as of" date. */
   as_of: string;
   data_snapshot_date: string | null;
+  /** The day after the count: the numbers between it and as_of are estimated. */
+  data_date: string | null;
+  days_since_count: number | null;
   last_load_at: string | null;
   summary: Summary;
   order_items: ItemCard[];
@@ -430,8 +457,12 @@ export interface ImportReport {
   changes?: { what: string; now?: number; after?: number; count?: number }[];
   snapshot_date?: string;
   current_snapshot_date?: string | null;
-  /** "Today" for these files: the day after their stock count. */
+  /** Today in Boston when the check ran (ADR-034). */
   today?: string;
+  /** Where the numbers would start once loaded: the day after these files' stock count. */
+  data_date?: string;
+  /** Days from these files' count to today. */
+  count_age_days?: number;
   /** How this week's sales file merged with the stored history (sales accumulate). */
   sales?: {
     new: number;

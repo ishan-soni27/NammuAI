@@ -3,6 +3,8 @@
  * POs are created, shipped and received in BlueTide and arrive here with each weekly upload. The one
  * thing Dana adds is the real arrival date ("Set real date"), which the plan uses from then on.
  * Late lines (no believable date) come first: they aren't counted until she sets one (Dana Q3).
+ * So are lines due since the last upload, and lines whose date Dana set has passed (ADR-034): only
+ * the next upload can show they arrived.
  * Fed by: GET /purchase-orders (?q= search). Writes: PATCH /purchase-orders/{po}/lines/{n}.
  */
 import { useDeferredValue, useState } from "react";
@@ -18,9 +20,19 @@ import { formatShortDate } from "../lib/dates";
 import { dayWithRelative, qty } from "../lib/format";
 import { itemName } from "../lib/names";
 import { input } from "../lib/ui";
+import { useViewDate } from "../lib/viewDate";
+
+// Not counted because the day shown is past their date and no upload has confirmed them (ADR-034).
+const SINCE_UPLOAD: Record<string, string> = {
+  "Due since your last upload":
+    "Upload this week's BlueTide files to see if it arrived, or set its real date.",
+  "Your date has passed":
+    "Upload this week's BlueTide files to confirm it arrived, or set a new date.",
+};
 
 function Line({ line, asOf }: { line: OnTheWayLine; asOf: string }) {
   const setByDana = line.eta_source.startsWith("Set by");
+  const sinceUpload = SINCE_UPLOAD[line.eta_source];
   const corrected = line.eta && line.bluetide_date && line.eta !== line.bluetide_date;
   return (
     <li className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 px-4 py-3">
@@ -43,22 +55,24 @@ function Line({ line, asOf }: { line: OnTheWayLine; asOf: string }) {
           <span className="font-semibold">{qty(line.qty, line.sell_uom)}</span>{" "}
           {line.is_late ? (
             <span className="inline-block rounded bg-red-tint px-2 py-0.5 text-xs font-semibold text-red">
-              <Term explain="late">Late</Term>: not counted
+              {sinceUpload ? line.eta_source : <Term explain="late">Late</Term>}: not counted
             </span>
           ) : (
             <>arriving about {line.eta ? dayWithRelative(line.eta, asOf) : "?"}</>
           )}
         </p>
         <p className="text-fog">
-          {line.is_late
-            ? line.bluetide_date
-              ? `BlueTide said ${formatShortDate(line.bluetide_date)}, and nothing has arrived.`
-              : "No date in BlueTide, and nothing has arrived."
-            : setByDana
-              ? line.eta_source
-              : corrected
-                ? `BlueTide says ${formatShortDate(line.bluetide_date ?? "")}; the real lead time says later.`
-                : line.eta_source}
+          {sinceUpload
+            ? sinceUpload
+            : line.is_late
+              ? line.bluetide_date
+                ? `BlueTide said ${formatShortDate(line.bluetide_date)}, and nothing has arrived.`
+                : "No date in BlueTide, and nothing has arrived."
+              : setByDana
+                ? line.eta_source
+                : corrected
+                  ? `BlueTide says ${formatShortDate(line.bluetide_date ?? "")}; the real lead time says later.`
+                  : line.eta_source}
         </p>
         <div className="sm:flex sm:justify-end">
           <SetPoDate
@@ -78,7 +92,9 @@ export function OnTheWayPage() {
   const [search, setSearch] = useState("");
   const q = useDeferredValue(search.trim());
   const lines = useOnTheWay(q);
-  const asOf = useHealth().data?.as_of;
+  const viewDate = useViewDate();
+  const today = useHealth().data?.as_of;
+  const asOf = viewDate ?? today;
 
   return (
     <div className="space-y-4">

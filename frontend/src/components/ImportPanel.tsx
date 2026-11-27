@@ -8,6 +8,7 @@ import { useState } from "react";
 import { useCheckImport, useDiscardImport, useLoadImport, usePutImportFile } from "../api/queries";
 import type { Import, ImportReport } from "../api/types";
 import { formatShortDate } from "../lib/dates";
+import { countAge } from "../lib/format";
 import { primaryButton, quietButton, secondaryButton } from "../lib/ui";
 
 const n = (value: number) => value.toLocaleString("en-US");
@@ -65,9 +66,12 @@ function Report({ report }: { report: ImportReport }) {
       {report.snapshot_date && (
         <p className="text-sm text-fog">
           Stock count in these files: {formatShortDate(report.snapshot_date)}
+          {report.count_age_days !== undefined && ` (${countAge(report.count_age_days)})`}
           {report.current_snapshot_date &&
-            ` (the one loaded now: ${formatShortDate(report.current_snapshot_date)})`}
-          .{report.today && ` Loading them makes today ${formatShortDate(report.today)}.`}
+            `; the one loaded now is ${formatShortDate(report.current_snapshot_date)}`}
+          .
+          {report.data_date &&
+            ` Loaded, the numbers start from ${formatShortDate(report.data_date)}.`}
         </p>
       )}
       {report.sales && (

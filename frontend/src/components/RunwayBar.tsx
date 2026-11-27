@@ -12,7 +12,9 @@ import { formatShortDate } from "../lib/dates";
 import { duration } from "../lib/format";
 
 const FILL: Record<Status, string> = {
+  OUT_OF_STOCK: "bg-red",
   TOO_LATE: "bg-red",
+  OVERDUE: "bg-red",
   ORDER_THIS_WEEK: "bg-yellow",
   ORDER_SOON: "bg-yellow",
   OK: "bg-green",

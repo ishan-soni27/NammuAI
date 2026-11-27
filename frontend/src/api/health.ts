@@ -1,9 +1,9 @@
 /**
  * useHealth(): GET /api/v1/health, the first call every page makes.
  *
- * It tells the header which date is "today" (AS_OF_DATE from the server, never the
- * browser clock) and whether the database is reachable. Retries a few times because a
- * sleeping Render instance can take up to about a minute to answer (§8.1).
+ * It tells the header which date is "today" (Boston's calendar date from the server, ADR-034; never
+ * the browser clock), how old BlueTide's count is, and whether the database is reachable. Retries a
+ * few times because a sleeping server can take a while to answer the first call.
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "./client";

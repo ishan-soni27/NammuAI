@@ -7,7 +7,7 @@
 import { lazy, Suspense, useState } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import { ActorPrompt } from "./components/ActorPrompt";
-import { AppHeader } from "./components/AppHeader";
+import { AppHeader, DateBanners } from "./components/AppHeader";
 import { LoadingState } from "./components/LoadingState";
 import { getActor, hasChosenActor } from "./lib/actor";
 import { ActivityPage } from "./pages/ActivityPage";
@@ -33,6 +33,7 @@ export function App() {
         Skip to content
       </a>
       <AppHeader actor={actor} onChangeActor={() => setAskActor(true)} />
+      <DateBanners />
       <main id="main" className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         <Suspense fallback={<LoadingState label="Loading this page" />}>
           <Routes>

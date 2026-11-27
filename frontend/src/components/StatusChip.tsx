@@ -1,7 +1,7 @@
 /**
  * Status and problem labels as Dana reads them: traffic-light colour + icon + words, never colour
  * alone (BUILD_PROMPT §9.1; Ishan 2026-11-26: red, yellow and green only).
- *   red    = too late
+ *   red    = out of stock (estimated), too late, overdue (ADR-034: urgent, always with ✕ / ⚠ / !)
  *   yellow = order this week (solid), order soon (light): both mean "an order is due"
  *   green  = fine
  *   grey   = handled, no recent sales, not planned
@@ -10,7 +10,9 @@
 import type { Status, StuckTag } from "../api/types";
 
 const STATUS: Record<Status | "HANDLED", { label: string; icon: string; className: string }> = {
+  OUT_OF_STOCK: { label: "Out of stock", icon: "✕", className: "bg-red text-hull" },
   TOO_LATE: { label: "Too late", icon: "⚠", className: "bg-red text-hull" },
+  OVERDUE: { label: "Overdue", icon: "!", className: "bg-red text-hull" },
   ORDER_THIS_WEEK: { label: "Order this week", icon: "●", className: "bg-yellow text-ink" },
   ORDER_SOON: {
     label: "Order soon",
