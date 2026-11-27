@@ -41,7 +41,9 @@ ORDER_KEY = [
     ("SAL-SIDE-SK", "ORDER_THIS_WEEK", date(2027, 1, 5)),
 ]
 SHORT = {
+    "OUT_OF_STOCK": "out",  # ADR-034
     "TOO_LATE": "too late",
+    "OVERDUE": "overdue",  # ADR-034: order-by passed, an order today still lands
     "ORDER_THIS_WEEK": "this week",
     "ORDER_SOON": "soon",
     "OK": "fine",
