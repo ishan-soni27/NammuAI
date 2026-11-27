@@ -1545,3 +1545,99 @@ them, offering a small before/after set for the review if wanted.
 **AI mistakes caught or corrected:** "P1 work of your choosing or the review" was jargon without explanation; it's now
 explained (P1 = the next-priority list in docs/PRIORITIES.md; the review = Nammu's live walkthrough).
 **Follow-ups:** Ishan picks: P1 items, review prep, or both.
+
+## #39 | 2026-11-27 05:56 UTC (logged) | "This has to be a system that Dana can check any day ... use a real calendar ... Boston timing"
+**Prompt (simplified):** Use a real calendar in Boston time, so Dana can check the app on any day. What are the
+implications, and what has to change? Example: if she uploads nothing for 3 weeks and an item says "order by Nov 22",
+it must say it's overdue or out of stock, with an urgent indicator.
+**Ishan's answers (plan mode):**
+1. Stale stock: show **both** the count as BlueTide reported it and an estimate for today.
+2. POs due since the last count: **don't count them**.
+3. Urgency: **red, new statuses**.
+4. The assignment's Nov 16: an in-app **"view as of"** switch.
+Plan approved. This is step 1 (build, deploy, STOP); step 2 (docs) waits for "go".
+**What changed (commits 8077988, b96ed15, b735186):**
+- **Two dates (ADR-034, to be written in step 2):**
+  - *Today* = Boston's calendar date (`config/clock.py`, the one clock read; `America/New_York`, with `tzdata` in
+    requirements for Vercel); `AS_OF_DATE` still overrides it for tests and demos;
+  - *data date* = the day after BlueTide's count, where the projection starts.
+  - Measured to the data date: the selling rate, the season pattern and "late" POs (A18).
+  - Judged against today: statuses, order-by, when a new order lands (today + lead time), expiry, the six-month line,
+    and the validation of Dana's dates.
+- **The estimate between them:** the count − expected sales − scheduled customer orders, with sales lost while out of
+  stock written off. The chart starts today. Cards and the item page show both "At the count (Sun Nov 15)" and "Can
+  sell now (estimated)" (whole units, so the rows add up exactly).
+- **New red statuses:**
+  - **Out of stock** (the estimate is gone by today) and **Overdue** (the order-by date has passed, but an order
+    today still lands in time), ranked Out of stock > Too late > Overdue > Order this week > Order soon;
+  - Monday groups and tiles (shown only when non-zero); "Overdue by N days"; "Out of stock since about Tue Nov 24";
+  - the headline leads with them;
+  - status words in the download.
+- **Supply:** a PO due between the data date and today is not counted ("Due since your last upload"), and neither is a
+  date Dana set that has passed ("Your date has passed"). Both are flagged on Monday and on On the way.
+- **View as of:**
+  - a date control in the header, limited to the data date through today, kept for this browser tab only;
+  - it sends `X-As-Of` on every call, and downloads add `?as_of=`;
+  - a yellow "Viewing as of … · Back to today" strip; edits are judged against the viewed day;
+  - an out-of-range date gets a plain-English 422.
+- **Freshness:** the header reads "BlueTide count of Sun Nov 15 (12 days ago)". There's a yellow banner after 7 days
+  and a red one after 14 (`stale_data_days`, `very_stale_data_days`), with a link to "Upload this week's files".
+  Health reports `data_date`, `days_since_count` and both thresholds.
+- **Uploads:** a load describes its files as of their own data date (`rules_for_load`). A count dated after Boston's
+  today is blocked. The check now says "Loaded, the numbers start from Mon Nov 16" (it used to say "makes today").
+- **Tests:** 274 → 327. New:
+  - engine (`tests/unit/planning/test_real_calendar.py`): Ishan's 3-week example, the estimate, POs due since,
+    expiry in the gap, no change with no gap;
+  - reconciliation extended over an 11-day gap on the real data;
+  - API (`tests/api/test_real_calendar.py`): today vs the Nov 16 view, the 422s, downloads, edits judged against the
+    view, health.
+  - Clock tests: Boston vs UTC at midnight, and the DST changeover.
+**Impact (real data, count of Sun Nov 15):**
+- **Today, Fri Nov 27:** 1 out of stock (SHR-2125, since about Nov 24), 5 too late (+CRAB-SNW5, LOB-MEAT, SCL-U10),
+  7 overdue (HAD-FIL 6 days, SAL-SIDE-SK 10, SHR-1215 7, CAL-RING 5, POL-FIL 2, SAL-CHO6 3, LOB-T810 3),
+  3 this week, 7 soon, 7 fine.
+- **Viewed as of Mon Nov 16:** 3 too late, **1 overdue (LOB-MEAT: order by Nov 13)**, 5 this week, 5 soon, 16 fine.
+  It used to be 3 / 6 / 5 / 16: LOB-MEAT moved from "Order this week" to the new red "Overdue", because its order-by
+  date was already 3 days past. Every golden fact (G01–G17) still holds.
+- **Simulated 3 weeks (override Dec 7):** 3 out of stock, 9 too late, 5 overdue, and a red banner. Ishan's "order by
+  Nov 22" item on the real data (CAL-RING) reads **Too late**, because its 12-week lead time can't land in time any
+  more. The synthetic test with a longer cushion shows "Overdue by 15 days".
+- **Live (b735186), checked 2026-11-27 ~06:00 UTC:**
+  - health shows `as_of` 2026-11-27, so Vercel reads Boston's date;
+  - Monday today and as of Nov 16 match the numbers above, at 1280 and 375 px, with no errors and no sideways scroll;
+  - `X-As-Of: 2026-11-15` → 422; the download with `?as_of=2026-11-16` is named for Nov 16;
+  - PO-260444 shows "Due since your last upload: not counted";
+  - an upload check ran ("Loaded, the numbers start from Mon Nov 16", 15,750 sales lines the same) and was discarded.
+  - **PO-260394, set and cleared in both views** (actor "Claude (live smoke test)"):
+    - Nov 20 is refused today ("already passed") but accepted while viewing Nov 16, and today then reads it as "Your
+      date has passed" (not counted);
+    - with Dec 4 set today, SHR-2125 is short 123 until Dec 4;
+    - all four edits are audited (`po_eta.set` / `po_eta.clear`), and the PO has no date again.
+  - Screenshots: `docs/screenshots/real-calendar/` (not committed).
+**Decisions made (and by whom):**
+- Ishan: the four answers above.
+- Claude (conservative or mechanical; to be recorded in ASSUMPTIONS in step 2):
+  - "Overdue" also applies with no gap (LOB-MEAT on Nov 16), since its order-by date really has passed;
+  - zero counted stock on the data date reads "Out of stock" (it was "Too late");
+  - a lot that expires between the count and today is dropped from today's stock;
+  - the staleness banners count from the count's date and appear after 7 and 14 days;
+  - while viewing an earlier day, the age is measured to that day, so there's no stale banner on Nov 16;
+  - the estimate is rounded to whole units;
+  - the one late-PO instruction disappears once an item is already out of stock (a late PO arriving today can't
+    prevent that); its late POs are still listed.
+**AI mistakes caught or corrected:**
+- **The plan overpromised.** It said that with no gap "everything is exactly as now". That was wrong for LOB-MEAT: the
+  new Overdue status changes its group on Nov 16. The tests caught it, and it's flagged above.
+- **The plan's "today" list was incomplete.** It left out LOB-T810 and SCL-U10, which change once POs due since the
+  count stop being counted (PO-260444 is due Nov 27).
+- **A wrong sentence, caught before commit.** "Loading them makes today Mon Nov 16" would have been false with a real
+  calendar. Reworded.
+- **A false alarm from my own check script.** It read each group's first line (the icon) and reported missing
+  groups. I fixed the script, not the site.
+- I ran `python`/`pytest` without activating the venv once ("command not found"), then re-ran correctly.
+**Follow-ups:**
+- **Step 2 (after "go"):** ADR-034, ASSUMPTIONS rows, CLAUDE.md (boundary 4, invariant 1, playbook), README and
+  DEMO_SCRIPT (start by switching the view to Nov 16).
+- **Question for Ishan:** a handled note whose arrival date has passed still counts as arriving today (the older
+  §6.10 rule). With a real calendar this happens between uploads. The conservative choice, matching answer 2, is to
+  stop counting it until an upload shows it.
