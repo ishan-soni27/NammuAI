@@ -165,7 +165,9 @@ export function OrderRow({
   const [handling, setHandling] = useState(false);
   const uom = card.sell_uom;
   const itemLink = `/items/${encodeURIComponent(card.item_code)}`;
-  const status = card.handled_note ? "HANDLED" : card.status;
+  // A note whose date has passed no longer counts, so the card shows the item's real status (A25).
+  const handled = card.handled_note && !card.handled_note.date_passed;
+  const status = handled ? "HANDLED" : card.status;
 
   // A card in the grid. Opened, it spans the full row (open:col-span-full) and the cards after it
   // fill the gap (grid-flow-dense on the grid).

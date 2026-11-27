@@ -143,3 +143,21 @@ def test_health_reports_boston_today_and_how_old_the_count_is(api: TestClient, n
         12,
     )
     assert (h["stale_after_days"], h["very_stale_after_days"]) == (7, 14)
+
+
+def test_a_handled_note_whose_date_has_passed_stops_counting_and_the_item_comes_back(
+    api: TestClient, nov27: None
+) -> None:
+    # Written while viewing Nov 16 (the demo), arriving Nov 20. On Nov 27 that date has passed (A25).
+    r = api.post(f"{V}/items/SHR-1620/handled", json={"qty": 400, "eta": "2026-11-20"}, headers=NOV16)
+    assert r.status_code == 201, r.text
+    then = api.get(f"{V}/dashboard", headers=NOV16).json()
+    assert "SHR-1620" in {i["item_code"] for i in then["handled_items"]}
+    now = api.get(f"{V}/dashboard").json()
+    assert "SHR-1620" not in {i["item_code"] for i in now["handled_items"]}
+    card = next(i for i in now["order_items"] if i["item_code"] == "SHR-1620")
+    assert card["status"] == "TOO_LATE"  # its real status, not grey "Handled"
+    assert card["handled_note"]["date_passed"] and not card["handled_note"]["counts_as_incoming"]
+    detail = api.get(f"{V}/items/SHR-1620").json()
+    assert not any(i["source"] == "handled_note" for i in detail["incoming"])
+    assert detail["handled_notes"][0]["date_passed"]

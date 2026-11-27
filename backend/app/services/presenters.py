@@ -22,7 +22,11 @@ URGENT = ("OUT_OF_STOCK", "TOO_LATE", "OVERDUE", "ORDER_THIS_WEEK", "ORDER_SOON"
 STATUS_RANK = {status: rank for rank, status in enumerate((*URGENT, "OK", "NO_RECENT_SALES", "NOT_PLANNED"))}
 
 
-def handled_out(flag: m.HandledFlag, bluetide_now_shows: list[str] | None = None) -> s.HandledNoteOut:
+def handled_out(
+    flag: m.HandledFlag, bluetide_now_shows: list[str] | None = None, as_of: date | None = None
+) -> s.HandledNoteOut:
+    # A dated note whose date is before today isn't counted (A25, Ishan 2026-11-27).
+    date_passed = flag.eta is not None and as_of is not None and flag.eta < as_of
     return s.HandledNoteOut(
         id=flag.id,
         item_code=flag.item_code,
@@ -31,7 +35,8 @@ def handled_out(flag: m.HandledFlag, bluetide_now_shows: list[str] | None = None
         note=flag.note,
         created_at=flag.created_at,
         created_by=flag.created_by,
-        counts_as_incoming=flag.qty is not None and flag.eta is not None,
+        counts_as_incoming=flag.qty is not None and flag.eta is not None and not date_passed,
+        date_passed=date_passed,
         bluetide_now_shows=bluetide_now_shows or [],
     )
 
@@ -223,8 +228,10 @@ def dashboard(
     ):
         note = handled_by_item.get(p.item.item_code)
         row = card(p, as_of, horizon_days, note)
-        if note is not None:
+        if note is not None and not note.date_passed:
             handled.append(row)  # §6.10: handled items move to their own section, never hidden
+        # A note whose date has passed no longer hides the item's status (A25): it's back in its group,
+        # and the card still shows the note, marked "date passed".
         elif p.confirmed.status in URGENT:
             order.append(row)
         else:

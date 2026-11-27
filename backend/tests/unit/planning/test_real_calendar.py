@@ -15,7 +15,7 @@ from datetime import timedelta
 
 import pytest
 
-from app.planning.types import EtaOverrideInput, ItemPlan
+from app.planning.types import EtaOverrideInput, HandledNoteInput, ItemPlan
 from tests.unit.planning.builders import AS_OF, RULES, lot, one, open_order, po, run, steady_sales
 
 DATA = AS_OF  # Mon Nov 16: the day after Sunday's count
@@ -142,6 +142,17 @@ def test_danas_date_that_has_passed_isnt_counted() -> None:
     # Before her date, it counts.
     before = one(run(rules=at(3), lots=[lot(qty=30)], pos=[late], overrides=[mine]))
     assert [x.eta for x in before.incoming] == [D(5)]
+
+
+def test_a_handled_note_whose_date_has_passed_isnt_counted() -> None:
+    # Ishan (2026-11-27, A25): "stop counting passed handled notes". She noted 400 by phone for Nov 21.
+    note = HandledNoteInput(1, "X", 400.0, D(5), "Ordered by phone", DATA)
+    before = one(run(rules=at(3), lots=[lot(qty=30)], notes=[note]))
+    assert [(x.source, x.eta) for x in before.incoming] == [("handled_note", D(5))]
+    after = one(run(rules=at(7), lots=[lot(qty=30)], notes=[note]))
+    assert after.incoming == () and after.late_incoming == ()  # not counted, and not a late PO either
+    assert after.confirmed == one(run(rules=at(7), lots=[lot(qty=30)])).confirmed  # as if there were no note
+    assert after.active_handled_note == note  # still shown
 
 
 # ---- No gap: exactly as before ---------------------------------------------------------------

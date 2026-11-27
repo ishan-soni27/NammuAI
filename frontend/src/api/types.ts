@@ -48,6 +48,8 @@ export interface HandledNote {
   created_at: string;
   created_by: string;
   counts_as_incoming: boolean;
+  /** Its arrival date is before today: not counted, and the item is back in its status group (A25). */
+  date_passed?: boolean;
   bluetide_now_shows: string[];
 }
 

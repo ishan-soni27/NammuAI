@@ -249,17 +249,20 @@ def incoming_for_item(
     for note in handled_notes:
         if note.qty is None or note.eta is None:
             continue  # a note without both only changes how the item is displayed (§6.10)
-        flags = ("Your date has passed; counted as arriving today",) if note.eta < rules.as_of_date else ()
+        if note.eta < rules.as_of_date:
+            # Its date has passed (Ishan 2026-11-27, A25): only an upload can show it arrived, and once it
+            # has, BlueTide's count holds it, so counting the note too would count it twice. Not counted;
+            # the note is shown as "date passed" and the item goes back to its status (presenters.py).
+            continue
         dated.append(
             IncomingLine(
                 "handled_note",
                 f"Your note #{note.note_id}",
                 note.qty,
-                max(note.eta, rules.as_of_date),
+                note.eta,
                 "Your note: ordered by phone",
                 None,
                 False,
-                flags,
             )
         )
     dated.sort(key=lambda i: (i.eta or date.max, i.reference))

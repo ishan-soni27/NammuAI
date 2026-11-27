@@ -104,7 +104,7 @@ def mark_handled(
     )
     db.commit()
     db.refresh(flag)
-    return presenters.handled_out(flag)
+    return presenters.handled_out(flag, as_of=rules.as_of_date)
 
 
 @router.delete("/handled/{note_id}", response_model=s.HandledNoteOut)

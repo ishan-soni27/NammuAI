@@ -227,7 +227,9 @@ function Item({ detail }: { detail: ItemDetail }) {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <StatusChip status={card.handled_note ? "HANDLED" : card.status} />
+          <StatusChip
+            status={card.handled_note && !card.handled_note.date_passed ? "HANDLED" : card.status}
+          />
           <button
             type="button"
             onClick={() => setHandling(true)}

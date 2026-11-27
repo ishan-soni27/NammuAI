@@ -72,7 +72,13 @@ class HandledNoteOut(BaseModel):
     note: str | None
     created_at: datetime
     created_by: str
-    counts_as_incoming: bool = Field(description="True when it has both a quantity and a date (§6.10).")
+    counts_as_incoming: bool = Field(
+        description="True when it has both a quantity and a date that hasn't passed (§6.10, A25)."
+    )
+    date_passed: bool = Field(
+        default=False,
+        description="Its arrival date is before today: not counted; the item is back in its status group.",
+    )
     bluetide_now_shows: list[str] = Field(
         default_factory=list,
         description="Open POs BlueTide now shows for this item since the note: 'Clear your note?' (§6.10).",

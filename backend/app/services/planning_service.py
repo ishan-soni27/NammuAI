@@ -82,7 +82,7 @@ def handled_notes_by_item(session: Session, rules: BusinessRules) -> dict[str, s
         written = flag.created_on or rules.as_of_date
         return sorted({po_no for ordered, po_no in open_pos.get(flag.item_code, []) if ordered >= written})
 
-    return {f.item_code: presenters.handled_out(f, newer(f)) for f in flags}
+    return {f.item_code: presenters.handled_out(f, newer(f), rules.as_of_date) for f in flags}
 
 
 def dashboard(session: Session, rules: BusinessRules) -> s.DashboardOut:
@@ -239,7 +239,7 @@ def item_detail(session: Session, rules: BusinessRules, raw_code: str) -> s.Item
         aliases=sorted(
             a.alias_code for a in session.scalars(select(m.ItemAlias).where(m.ItemAlias.item_code == code))
         ),
-        handled_notes=[presenters.handled_out(f) for f in flags],
+        handled_notes=[presenters.handled_out(f, as_of=rules.as_of_date) for f in flags],
         season_markers=[
             s.SeasonMarkerOut(label=label, start=start, end=end)
             for label, start, end in season_markers(
